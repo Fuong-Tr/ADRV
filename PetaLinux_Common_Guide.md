@@ -37,18 +37,16 @@ XSA mô tả phần cứng xuất từ Vivado; không thay thế mã nguồn dri
 
 Nếu chỉ cần dựng hệ thống cơ bản, có thể bắt đầu với template + XSA. Để kiểm tra driver đặc thù, phải bổ sung các phụ thuộc của driver theo tài liệu board trước khi kết luận.
 
-## 3. Chuẩn bị môi trường — HOST
+## 3. Chuẩn bị môi trường
 
 ### 3.1. Hệ điều hành và tài nguyên
 
 Kiểm tra linux trên máy hiện tại - với máy đã sử dụng là Petalinux 2023.2
 
 
-## 4. Tạo project và nhập phần cứng — HOST
+## 4. Tạo project và nhập phần cứng
 
 ### 4.1. Cách A: project mới từ template và XSA
-
-Ví dụ cho ZynqMP; đổi template thành `zynq` nếu dùng Zynq-7000:
 
 ```bash
 petalinux-create -t project --template "_template_" --name "_template_"
@@ -121,7 +119,7 @@ Node device tree chỉ mô tả phần cứng; node clock không tự lập trì
 
 Ví dụ SD bên dưới ưu tiên **rootfs trong RAM**. Chỉ chọn phương án này nếu RAM đủ. Kiểm tra **Image Packaging Configuration** và image recipe; không mặc định image.ub luôn chứa rootfs.
 
-## 6. Build và kiểm tra đầu ra — HOST
+## 6. Build và kiểm tra đầu ra
 
 Build / build thành phần để khoanh vùng sau khi sửa:
 
@@ -149,14 +147,9 @@ Các lệnh trên giả định output FIT thông dụng. Nếu chọn image r�
 
 Kiểm tra FIT có ramdisk nếu luồng boot yêu cầu; DTB có node mong đợi; rootfs có module/firmware. File tồn tại chỉ xác nhận artifact được sinh, chưa xác nhận chạy tốt. Tham khảo [Building a PetaLinux System Image][build].
 
-## 7. Đóng gói BOOT.BIN — HOST
+## 7. Đóng gói file boot
 
-Chọn đúng một ví dụ theo SoC. Đặt đường dẫn bitstream thực:
-
-```bash
-export PLNX_BITSTREAM="<ABSOLUTE_BITSTREAM_PATH>"
-test -s "$PLNX_BITSTREAM"
-```
+Chạy lệnh tạo file bot
 
 **Zynq UltraScale+ MPSoC:**
 
@@ -165,6 +158,7 @@ petalinux-package --boot --fsbl zynqmp_fsbl.elf --fpga system.bit --pmufw pmufw.
 
 ```
 
+Lệnh trên sẽ tạo các file boot trong thư mục image/linux
 
 Tham khảo [AMD: cấu hình U-Boot và đóng gói][package]. Luồng Versal/PDI hoặc flash layout khác cần lệnh riêng.
 
