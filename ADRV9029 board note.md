@@ -1,12 +1,5 @@
 # Ghi chú bo ADRV9029
 
-> Tài liệu riêng cho bo **ADRV9029** trong dự án PetaLinux.
->
-> Mốc tham chiếu của repository: **PetaLinux 2023.2**, **Vivado/Vitis 2023.2**, **ADI 2023_R2**, Zynq UltraScale+ MPSoC **XCZU15EG**.
->
-> Phần cài đặt, build, đóng gói và boot PetaLinux dùng chung xem tại [PetaLinux_Common_Guide.md](PetaLinux_Common_Guide.md). Phần clock SI5518 và các ứng dụng TX/RX/DPD xem tại [SI5518_and_Apps_Guide.md](SI5518_and_Apps_Guide.md).
-
----
 
 ## 1. Mục đích
 
@@ -28,7 +21,7 @@ Các bước PetaLinux chung như cài tool, tạo project, import XSA, đóng g
 
 ---
 
-## 2. Mốc phiên bản
+## 2. Phiên bản
 
 Môi trường tham chiếu:
 
@@ -37,35 +30,14 @@ Vivado / Vitis : 2023.2
 PetaLinux      : 2023.2
 ADI release    : 2023_R2
 Kiến trúc      : Zynq UltraScale+ MPSoC / zynqMP
-Device         : XCZU15EG
 ```
-
-Nên giữ Vivado/XSA và PetaLinux cùng release để giảm lỗi tương thích.
-
-Trước mỗi phiên build:
-
-```bash
-source <PETALINUX_2023_2_INSTALL_DIR>/settings.sh
-
-petalinux-util --version
-which petalinux-build
-which petalinux-config
-```
-
 Kết quả phải trỏ về bộ PetaLinux 2023.2 đang dùng.
 
 ---
 
 ## 3. Chuẩn bị thư mục làm việc
 
-Ví dụ:
-
-```bash
-mkdir -p ~/work/adrv9029
-cd ~/work/adrv9029
-```
-
-Khuyến nghị bố trí:
+Khuyến nghị :
 
 ```text
 ~/work/adrv9029/
@@ -85,19 +57,12 @@ Không đặt source ADI bên trong `build/tmp` vì đây là vùng sinh tự đ
 
 ### 4.1. Linux kernel của ADI
 
+LINUX KERNEL HIỆN TẠI ĐÃ CÓ CÙNG VỚI MÔI TRƯỜNG PETALINUX 2023_2. CÓ SẴN DPD VÀ CFR TUY NHIÊN CHƯA RÕ CÁCH SỬ DỤNG TRỰC TIẾP, CÓ THỂ BỎ QUA PHẦN 4.1 NÀY
+
 ```bash
 cd ~/work/adrv9029/adi
 
 git clone --branch 2023_R2 https://github.com/analogdevicesinc/linux.git
-cd linux
-git rev-parse HEAD
-git status
-```
-
-Sau khi clone nên lưu lại commit thực tế:
-
-```bash
-git rev-parse HEAD
 ```
 
 Không chỉ ghi tên branch; commit SHA giúp tái tạo đúng môi trường đã kiểm thử.
@@ -140,36 +105,7 @@ Nếu đã có XSA đã xác nhận chạy tốt thì bước này không bắt 
 
 ## 5. Tạo hoặc phục hồi project PetaLinux
 
-Tạo project ZynqMP:
-
-```bash
-cd ~/work/adrv9029/petalinux
-
-petalinux-create -t project --template zynqMP --name adrv9029
-cd adrv9029
-```
-
-Nếu dùng dữ liệu trong repository này, giải nén `project-spec.zip` vào project để có:
-
-```text
-<PROJECT_DIR>/project-spec/meta-user/
-```
-
-Ví dụ:
-
-```bash
-unzip <PATH_TO_ADRV_REPO>/project-spec.zip -d <PROJECT_DIR>
-```
-
-Nếu tạo lại từ XSA:
-
-```bash
-petalinux-config --get-hw-description=<THU_MUC_CHUA_XSA>
-```
-
-XSA phải đúng với thiết kế phần cứng, bitstream và cấu hình JESD/DMA sẽ dùng trên bo.
-
----
+ĐÃ HƯỚNG DẪN Ở FILE Petalinux_Common_Guide.md
 
 ## 6. Thêm layer ADI vào Yocto
 
@@ -363,61 +299,10 @@ Với ADRV9029 cần đối chiếu ít nhất:
 - CMA/reserved memory nếu thiết kế yêu cầu.
 - `status = "okay"` cho các block cần sử dụng.
 
-Build lại device tree:
 
-```bash
-petalinux-build -c device-tree
-```
+## 12. Build, Đóng gói và Boots
 
-Clock SI5518 được mô tả riêng trong [SI5518_and_Apps_Guide.md](SI5518_and_Apps_Guide.md).
-
----
-
-## 12. Trình tự build khuyến nghị
-
-### 12.1. Build firmware và ứng dụng
-
-```bash
-petalinux-build -c adrv-firmware
-petalinux-build -c si5518config
-petalinux-build -c tx-dma
-petalinux-build -c rx-dma
-petalinux-build -c dpd-app
-```
-
-### 12.2. Build kernel/device tree khi có thay đổi
-
-```bash
-petalinux-build -c kernel
-petalinux-build -c device-tree
-```
-
-### 12.3. Build toàn bộ image
-
-```bash
-petalinux-build
-```
-
-Sau khi build riêng từng recipe vẫn nên chạy full build để cập nhật image/rootfs cuối cùng.
-
-Output chính thường nằm tại:
-
-```text
-<PROJECT_DIR>/images/linux/
-```
-
-Ví dụ:
-
-```text
-image.ub
-system.dtb
-boot.scr
-BOOT.BIN
-```
-
-Việc đóng gói BOOT.BIN và chuẩn bị SD card xem trong `PetaLinux_Common_Guide.md`.
-
----
+ĐÃ CÓ TRONG Petalinux_Commnond_Guide.md
 
 ## 13. Kiểm tra sau khi boot
 
@@ -495,112 +380,3 @@ modinfo <TEN_MODULE>
 Nếu driver được build vào kernel (`=y`) thì không xuất hiện trong `lsmod`.
 
 ---
-
-## 14. Trình tự bring-up bo ADRV9029
-
-Khuyến nghị kiểm tra theo thứ tự:
-
-```text
-Boot Linux
-   ↓
-Kiểm tra device tree / SPI / GPIO
-   ↓
-Cấu hình SI5518
-   ↓
-Xác nhận reference clock và SYSREF
-   ↓
-Nạp firmware/profile ADRV
-   ↓
-Kiểm tra probe ADRV
-   ↓
-Kiểm tra JESD204
-   ↓
-Kiểm tra IIO
-   ↓
-Kiểm tra RX
-   ↓
-Kiểm tra TX
-   ↓
-Kiểm tra DPD nếu cần
-```
-
-Không nên debug RX/TX trước khi clock và JESD đã ổn định.
-
----
-
-## 15. Khi port sang project khác
-
-Khi một đội khác cần port ADRV9029, nên bàn giao theo nhóm sau.
-
-### Phần dùng chung
-
-- PetaLinux release.
-- Cách cài môi trường.
-- Cách build.
-- Cách đóng gói.
-- Cách boot/nạp image.
-- Cách xem log và kiểm tra Linux.
-
-Các nội dung này nằm trong `PetaLinux_Common_Guide.md`.
-
-### Phần riêng ADRV9029
-
-- XSA/bitstream đúng revision.
-- ADI release và commit SHA.
-- `meta-adi-xilinx` path.
-- Kernel config.
-- Rootfs config.
-- `system-user.dtsi`.
-- Firmware/profile và checksum.
-- Cấu hình clock/SYSREF.
-- Thứ tự bring-up ADRV/JESD.
-- Bài test RX/TX tham chiếu.
-- Log của một lần chạy tốt.
-
-Mục tiêu đầu tiên khi port không phải sửa code ngay mà là tái tạo được một baseline có thể build và boot, sau đó xác nhận lần lượt SPI → clock → ADRV → JESD → IIO → DMA.
-
----
-
-## 16. Checklist nhanh
-
-### HOST
-
-```text
-[ ] PetaLinux 2023.2 đã được source đúng
-[ ] XSA đúng board/revision
-[ ] ADI linux 2023_R2 đã clone
-[ ] meta-adi 2023_R2 đã clone
-[ ] Ghi lại commit SHA
-[ ] meta-adi-xilinx đã thêm vào User Layers
-[ ] Kernel config đã kiểm tra
-[ ] Rootfs packages đã bật
-[ ] system-user.dtsi đã đối chiếu với XSA
-[ ] Firmware/profile đúng bộ
-[ ] petalinux-build hoàn tất
-```
-
-### BOARD
-
-```text
-[ ] Linux boot thành công
-[ ] SPI device xuất hiện
-[ ] GPIO/reset đúng
-[ ] SI5518 được cấu hình
-[ ] Reference clock ổn định
-[ ] Firmware/profile ADRV tồn tại
-[ ] ADRV probe thành công
-[ ] JESD link hoạt động
-[ ] IIO device xuất hiện
-[ ] RX test đạt
-[ ] TX test đạt
-[ ] Log được lưu lại
-```
-
----
-
-## 17. Tài liệu liên quan trong repository
-
-- [PetaLinux_Common_Guide.md](PetaLinux_Common_Guide.md) — hướng dẫn chung môi trường, build, boot và kiểm tra.
-- [SI5518_and_Apps_Guide.md](SI5518_and_Apps_Guide.md) — SI5518, firmware script, TX/RX DMA và DPD.
-- `project-spec.zip` — dữ liệu PetaLinux của project.
-- `adrv-firmware.zip` — gói firmware lưu trữ trong repository.
