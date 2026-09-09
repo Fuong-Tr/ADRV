@@ -1,0 +1,17 @@
+source /opt/tools/Xilinx/petalinux/2023.2/settings.sh - môi trường petalinux
+
+petalinux-create -t project -n <name_prj> --template zynqMP - tạo project petalinux
+
+petalinux-config --get-hw-description= </path/to/design.xsa> - import file xsa
+
+adi$ git clone -b 2023_R2 --depth 1 https://github.com/analogdevicesinc/meta-adi.git --import ...
+Lệnh này để ....
+config -> yocto -> userlayer -> add path adi
+
+1 IP để chạy được phải có cả driver và app
+Sau khi import từ xsa, các driver có sẵn sẽ đc lưu ở device tree
+pl.dtsi: Chứa mô tả các IP được lập trình trong vùng Programmable Logic (PL)
+pcw.dtsi: Chứa mô tả phần cứng liên quan đến vùng Processing System (PS)
+
+Viết user-app thực hiện chức năng ...
+petalinux-create -t apps -n <TEN_APP> --enable lệnh tạo user-app
