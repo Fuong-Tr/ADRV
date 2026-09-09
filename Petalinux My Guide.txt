@@ -11,6 +11,7 @@ config -> yocto -> userlayer -> add path adi
 1 IP để chạy được phải có cả driver và app
 Sau khi import từ xsa, các driver có sẵn sẽ đc lưu ở device tree
 pl.dtsi: Chứa mô tả các IP được lập trình trong vùng Programmable Logic (PL)
+Có thể sửa ... để ...
 pcw.dtsi: Chứa mô tả phần cứng liên quan đến vùng Processing System (PS)
 
 Viết user-app thực hiện chức năng ...
