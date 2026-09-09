@@ -1,89 +1,48 @@
-# ADRV9029 Board Note
+# Ghi chú bo ADRV9029
 
-> Board-specific notes for building, configuring and checking the **ADRV9029** platform.
+> Tài liệu riêng cho bo **ADRV9029** trong dự án PetaLinux.
 >
-> Baseline used by this repository: **PetaLinux 2023.2**, Zynq UltraScale+ MPSoC **XCZU15EG**, ADI software baseline **2023_R2**.
+> Mốc tham chiếu của repository: **PetaLinux 2023.2**, **Vivado/Vitis 2023.2**, **ADI 2023_R2**, Zynq UltraScale+ MPSoC **XCZU15EG**.
 >
-> General PetaLinux installation/build/boot steps are described in [PetaLinux_Common_Guide.md](PetaLinux_Common_Guide.md). Clock SI5518 and board applications are described in [SI5518_and_Apps_Guide.md](SI5518_and_Apps_Guide.md).
+> Phần cài đặt, build, đóng gói và boot PetaLinux dùng chung xem tại [PetaLinux_Common_Guide.md](PetaLinux_Common_Guide.md). Phần clock SI5518 và các ứng dụng TX/RX/DPD xem tại [SI5518_and_Apps_Guide.md](SI5518_and_Apps_Guide.md).
 
 ---
 
-## 1. Scope
+## 1. Mục đích
 
-This file contains only the parts that are specific to the ADRV9029 board/project:
+Tài liệu này tập trung vào các nội dung riêng của bo ADRV9029:
 
-- Tool/release baseline used for this board.
-- Restoring `project-spec` into a PetaLinux project.
-- Cloning Analog Devices sources.
-- ADI Yocto layer path.
-- ADRV9029 custom driver path and build method.
-- Kernel configuration checklist.
-- Device-tree path.
-- Firmware/profile path.
-- Rootfs packages.
-- Board-side driver/JESD/IIO checks.
-- Recommended workflow when porting the driver to another project.
+- Phiên bản công cụ và mã nguồn nên sử dụng.
+- Clone source của Analog Devices.
+- Thêm layer ADI vào PetaLinux/Yocto.
+- Các đường dẫn Yocto quan trọng.
+- Cấu hình kernel liên quan ADRV, IIO, JESD204 và DMA.
+- Cấu hình rootfs.
+- Device tree.
+- Firmware/profile ADRV.
+- Trình tự build.
+- Các bước kiểm tra trên bo sau khi boot.
+- Quy trình dùng làm mốc khi port driver sang project khác.
 
-Do not use this file as a replacement for the common PetaLinux guide.
-
----
-
-## 2. Repository data
-
-The repository contains:
-
-```text
-ADRV/
-├── README.md
-├── PetaLinux_Common_Guide.md
-├── ADRV9029 board note.md
-├── SI5518_and_Apps_Guide.md
-├── project-spec.zip
-└── adrv-firmware.zip
-```
-
-`project-spec.zip` contains the board/project-specific PetaLinux configuration and custom software. The important paths restored under the PetaLinux project are:
-
-```text
-project-spec/meta-user/
-├── conf/
-│   └── petalinuxbsp.conf
-├── recipes-bsp/
-│   └── device-tree/
-│       └── files/
-│           └── system-user.dtsi
-├── recipes-modules/
-│   └── adrv9025-custom/
-│       ├── adrv9025-custom.bb
-│       └── files/
-│           └── adrv902x/
-└── recipes-apps/
-    ├── adrv-firmware/
-    ├── si5518config/
-    ├── tx-dma/
-    ├── rx-dma/
-    └── dpd-app/
-```
-
-The ADRV9029 Linux driver in this project is intentionally named **`adrv9025-custom`**. The ADI API and many firmware/device names still use ADRV9025/ADRV9026 naming; do not rename them only for cosmetic consistency.
+Các bước PetaLinux chung như cài tool, tạo project, import XSA, đóng gói BOOT.BIN và chuẩn bị SD card không lặp lại chi tiết ở đây.
 
 ---
 
-## 3. Install the required tools
+## 2. Mốc phiên bản
 
-Use the same release for Vivado/XSA and PetaLinux whenever possible.
-
-For this project the reference release is:
+Môi trường tham chiếu:
 
 ```text
 Vivado / Vitis : 2023.2
 PetaLinux      : 2023.2
 ADI release    : 2023_R2
-Architecture   : Zynq UltraScale+ MPSoC / zynqMP
+Kiến trúc      : Zynq UltraScale+ MPSoC / zynqMP
 Device         : XCZU15EG
 ```
 
-Install PetaLinux 2023.2 following AMD UG1144, then activate it before every build terminal:
+Nên giữ Vivado/XSA và PetaLinux cùng release để giảm lỗi tương thích.
+
+Trước mỗi phiên build:
 
 ```bash
 source <PETALINUX_2023_2_INSTALL_DIR>/settings.sh
@@ -93,42 +52,38 @@ which petalinux-build
 which petalinux-config
 ```
 
-Expected result: the tools resolve from the **2023.2** installation.
-
-Do not mix a 2023.2 project with a random newer PetaLinux environment unless the purpose is explicitly to port/migrate the project.
+Kết quả phải trỏ về bộ PetaLinux 2023.2 đang dùng.
 
 ---
 
-## 4. Prepare a working directory
+## 3. Chuẩn bị thư mục làm việc
 
-Example:
+Ví dụ:
 
 ```bash
 mkdir -p ~/work/adrv9029
 cd ~/work/adrv9029
 ```
 
-Recommended layout:
+Khuyến nghị bố trí:
 
 ```text
 ~/work/adrv9029/
 ├── adi/
 │   ├── linux/
 │   ├── meta-adi/
-│   └── hdl/                  # optional
+│   └── hdl/
 └── petalinux/
     └── adrv9029/
 ```
 
-Keep ADI repositories outside `build/tmp` and outside generated Yocto work directories.
+Không đặt source ADI bên trong `build/tmp` vì đây là vùng sinh tự động của Yocto.
 
 ---
 
-## 5. Clone Analog Devices sources
+## 4. Clone source Analog Devices
 
-### 5.1. ADI Linux kernel
-
-For the 2023.2 baseline use the ADI **2023_R2** branch/release:
+### 4.1. Linux kernel của ADI
 
 ```bash
 cd ~/work/adrv9029/adi
@@ -139,17 +94,21 @@ git rev-parse HEAD
 git status
 ```
 
-Record the commit SHA used for every validated build.
+Sau khi clone nên lưu lại commit thực tế:
 
-The upstream ADRV9025/ADRV902x driver is located under:
-
-```text
-linux/drivers/iio/adc/adrv902x/
+```bash
+git rev-parse HEAD
 ```
 
-Use this tree mainly as the upstream/reference source when reviewing or porting the board's custom driver.
+Không chỉ ghi tên branch; commit SHA giúp tái tạo đúng môi trường đã kiểm thử.
 
-### 5.2. ADI Yocto layer
+Source ADRV902x trong kernel ADI nằm tại:
+
+```text
+~/work/adrv9029/adi/linux/drivers/iio/adc/adrv902x/
+```
+
+### 4.2. Layer Yocto của ADI
 
 ```bash
 cd ~/work/adrv9029/adi
@@ -159,17 +118,15 @@ cd meta-adi
 git rev-parse HEAD
 ```
 
-The PetaLinux/ADI layer that is added to the project is:
+Layer dùng cho PetaLinux/Xilinx:
 
 ```text
 ~/work/adrv9029/adi/meta-adi/meta-adi-xilinx
 ```
 
-ADI documents `meta-adi-xilinx` as the Yocto layer used to integrate the ADI Linux kernel, device trees and userspace tools into Xilinx/PetaLinux projects.
+### 4.3. HDL của ADI
 
-### 5.3. ADI HDL — optional
-
-Only needed when rebuilding/comparing the ADI reference HDL/XSA:
+Chỉ cần khi muốn rebuild hoặc đối chiếu thiết kế HDL/XSA tham chiếu:
 
 ```bash
 cd ~/work/adrv9029/adi
@@ -177,13 +134,13 @@ cd ~/work/adrv9029/adi
 git clone --branch hdl_2023_r2 https://github.com/analogdevicesinc/hdl.git
 ```
 
-For normal driver porting with an already validated XSA, cloning the HDL repository is optional.
+Nếu đã có XSA đã xác nhận chạy tốt thì bước này không bắt buộc cho việc build Linux.
 
 ---
 
-## 6. Create/restore the PetaLinux project
+## 5. Tạo hoặc phục hồi project PetaLinux
 
-Create a ZynqMP project:
+Tạo project ZynqMP:
 
 ```bash
 cd ~/work/adrv9029/petalinux
@@ -192,166 +149,129 @@ petalinux-create -t project --template zynqMP --name adrv9029
 cd adrv9029
 ```
 
-Restore the repository's `project-spec.zip` into the project root so that the resulting path is:
+Nếu dùng dữ liệu trong repository này, giải nén `project-spec.zip` vào project để có:
 
 ```text
-<PROJECT_DIR>/project-spec/meta-user/...
+<PROJECT_DIR>/project-spec/meta-user/
 ```
 
-Example:
+Ví dụ:
 
 ```bash
 unzip <PATH_TO_ADRV_REPO>/project-spec.zip -d <PROJECT_DIR>
 ```
 
-Before overwriting an existing project, back up its current `project-spec` and compare differences.
-
-If the project is being recreated from XSA, import the correct hardware description:
+Nếu tạo lại từ XSA:
 
 ```bash
-petalinux-config --get-hw-description=<DIRECTORY_CONTAINING_XSA>
+petalinux-config --get-hw-description=<THU_MUC_CHUA_XSA>
 ```
 
-The XSA must correspond to the ADRV9029 hardware design and the bitstream that will be booted.
+XSA phải đúng với thiết kế phần cứng, bitstream và cấu hình JESD/DMA sẽ dùng trên bo.
 
 ---
 
-## 7. Add the ADI Yocto layer
+## 6. Thêm layer ADI vào Yocto
 
-Run:
+Từ thư mục project:
 
 ```bash
 cd <PROJECT_DIR>
 petalinux-config
 ```
 
-Go to:
+Vào:
 
 ```text
 Yocto Settings
   -> User Layers
 ```
 
-Add:
+Thêm đường dẫn tuyệt đối:
 
 ```text
 /home/<user>/work/adrv9029/adi/meta-adi/meta-adi-xilinx
 ```
 
-Use an absolute path where possible.
+Sau khi lưu cấu hình, kiểm tra layer đã được Yocto nhận.
 
-After configuration, confirm that the layer is visible in the generated Yocto configuration. Do **not** edit recipes directly inside `build/tmp`.
+Nguyên tắc:
 
-Important:
-
-- `meta-adi` is the upstream/vendor layer.
-- `project-spec/meta-user` is where board/project customization should live.
-- Do not modify the cloned `meta-adi` directly for board-specific changes; use `meta-user` recipes/bbappends instead.
+- Source/layer ADI đặt ngoài vùng sinh tự động.
+- Các thay đổi của project nên giữ trong `project-spec/meta-user` hoặc layer riêng.
+- Không sửa trực tiếp file trong `build/tmp` vì có thể bị ghi đè ở lần build tiếp theo.
 
 ---
 
-## 8. ADRV9029 custom driver
+## 7. Các đường dẫn Yocto/PetaLinux quan trọng
 
-### 8.1. Driver path in this project
+| Nội dung | Đường dẫn |
+|---|---|
+| Layer của project | `<PROJECT_DIR>/project-spec/meta-user/` |
+| Cấu hình layer | `<PROJECT_DIR>/project-spec/meta-user/conf/petalinuxbsp.conf` |
+| Device tree | `<PROJECT_DIR>/project-spec/meta-user/recipes-bsp/device-tree/files/system-user.dtsi` |
+| Firmware ADRV | `<PROJECT_DIR>/project-spec/meta-user/recipes-apps/adrv-firmware/` |
+| Ứng dụng SI5518 | `<PROJECT_DIR>/project-spec/meta-user/recipes-apps/si5518config/` |
+| Ứng dụng TX | `<PROJECT_DIR>/project-spec/meta-user/recipes-apps/tx-dma/` |
+| Ứng dụng RX | `<PROJECT_DIR>/project-spec/meta-user/recipes-apps/rx-dma/` |
+| Ứng dụng DPD | `<PROJECT_DIR>/project-spec/meta-user/recipes-apps/dpd-app/` |
+| Layer ADI cho Xilinx | `<ADI_DIR>/meta-adi/meta-adi-xilinx/` |
+| Source driver ADRV902x của ADI | `<ADI_DIR>/linux/drivers/iio/adc/adrv902x/` |
+| Device tree PL sinh tự động | `<PROJECT_DIR>/components/plnx_workspace/device-tree/device-tree/pl.dtsi` |
+| Output build | `<PROJECT_DIR>/images/linux/` |
 
-The board-specific driver recipe is:
-
-```text
-project-spec/meta-user/recipes-modules/adrv9025-custom/adrv9025-custom.bb
-```
-
-Driver/API source is under:
-
-```text
-project-spec/meta-user/recipes-modules/adrv9025-custom/files/adrv902x/
-```
-
-This is the driver that should be treated as the **current project implementation** when reproducing the existing ADRV9029 system.
-
-Do not blindly copy the latest `adrv9025.c` from ADI `main` into this folder. Port changes selectively and keep the working baseline reproducible.
-
-### 8.2. Compare custom driver with ADI upstream
-
-Useful when porting:
-
-```bash
-diff -ruN \
-  ~/work/adrv9029/adi/linux/drivers/iio/adc/adrv902x \
-  <PROJECT_DIR>/project-spec/meta-user/recipes-modules/adrv9025-custom/files/adrv902x \
-  > /tmp/adrv902x-custom-vs-adi.diff
-```
-
-Review especially:
-
-- Kernel API changes.
-- SPI APIs.
-- IIO APIs.
-- JESD204 interfaces.
-- DMA/buffer APIs.
-- Clock framework calls.
-- GPIO APIs.
-- Device-tree property handling.
-- DPD extensions.
-
-Do not port by fixing compiler errors only. A driver that compiles can still fail probe, JESD link initialization or IIO streaming.
+Khi debug Yocto có thể xem nội dung trong `build/tmp`, nhưng không dùng các file trong đó làm source chính thức.
 
 ---
 
-## 9. Kernel configuration checklist
+## 8. Cấu hình kernel
 
-Open the kernel configuration:
+Mở kernel configuration:
 
 ```bash
 petalinux-config -c kernel
 ```
 
-The exact symbol names can vary with the kernel/ADI release, so use menu search (`/`) and verify each dependency in the actual tree.
+Tên symbol có thể khác đôi chút theo kernel/release. Dùng phím `/` trong menuconfig để tìm theo từ khóa.
 
-The ADRV9029 platform normally requires the following classes of support:
+Các nhóm chức năng cần kiểm tra:
 
-| Function | Kernel configuration to verify |
+| Chức năng | Cấu hình cần có |
 |---|---|
-| SPI controller | Xilinx/ZynqMP SPI controller enabled |
-| SPI userspace for SI5518 | `CONFIG_SPI_SPIDEV` when using the current SI5518 app |
-| IIO core | Industrial I/O support enabled |
-| IIO buffers | Buffer support required by RX capture |
-| JESD204 framework | JESD204 framework/top-device support |
-| AXI DMAC | ADI AXI DMAC support |
-| AXI JESD RX/TX | ADI/Xilinx JESD204 RX and TX cores |
-| AXI transceiver | ADI AXI transceiver support |
-| ADC/DAC cores | ADI AXI ADC/DAC/IIO cores used by the XSA |
-| CMA/DMA | CMA/DMA support sized for capture/transmit buffers |
-| GPIO | GPIO support required by board reset/control signals |
-| GPIO sysfs | Required by the current SI5518 userspace code if it still uses legacy sysfs GPIO |
-| DebugFS | Useful/required for some debug/DPD attributes |
-| Module loading | Required when `adrv9025-custom` is built as a module |
+| SPI | Controller SPI của ZynqMP được bật |
+| SPI userspace | `CONFIG_SPI_SPIDEV` nếu ứng dụng SI5518 dùng spidev |
+| IIO | Industrial I/O core |
+| IIO buffer | Buffer support cho luồng RX/TX |
+| JESD204 | JESD204 framework và các thành phần liên quan |
+| AXI DMAC | ADI AXI DMAC |
+| AXI JESD RX/TX | Các core JESD RX/TX tương ứng thiết kế |
+| AXI transceiver | Transceiver support tương ứng HDL |
+| ADC/DAC | Các AXI ADC/DAC/IIO core cần cho datapath |
+| CMA/DMA | Bộ nhớ liên tục đủ cho buffer RX/TX |
+| GPIO | Reset/control GPIO của bo |
+| GPIO sysfs | Cần nếu chương trình SI5518 hiện tại vẫn dùng giao diện sysfs cũ |
+| DebugFS | Hữu ích cho debug IIO/JESD/DPD |
+| Module support | Bật nếu các driver được build dạng module |
 
-### Stock driver vs custom driver
+Sau khi chỉnh kernel:
 
-This project already provides `adrv9025-custom` as an out-of-tree/module recipe.
-
-Before enabling the stock in-kernel `CONFIG_ADRV9025`, determine whether both drivers would match the same SPI `compatible` string. Do **not** allow two ADRV9025/9029 drivers to compete for the same device.
-
-Recommended reproduction flow:
-
-1. Keep the known project `adrv9025-custom` recipe.
-2. Build/test that baseline first.
-3. Only then test an upstream/in-kernel driver in a separate controlled configuration.
+```bash
+petalinux-build -c kernel
+```
 
 ---
 
-## 10. Root filesystem configuration
+## 9. Cấu hình rootfs
 
-Open:
+Mở:
 
 ```bash
 petalinux-config -c rootfs
 ```
 
-Enable the project packages required for the board:
+Bật các gói cần cho bo, tối thiểu theo nhu cầu thử nghiệm:
 
 ```text
-adrv9025-custom
 adrv-firmware
 si5518config
 tx-dma
@@ -360,131 +280,102 @@ dpd-app
 kernel-modules
 ```
 
-Also include libiio userspace tools. In the PetaLinux menu this commonly includes:
+Nên bật thêm bộ công cụ libiio:
 
 ```text
 libiio
 libiio-tests
 ```
 
-After boot, verify that commands such as `iio_info`/`iio_attr` are actually present; enabling the library alone does not guarantee that all tools are installed.
+Sau khi boot phải kiểm tra lệnh thực tế đã có:
+
+```bash
+command -v iio_info
+command -v iio_attr
+```
+
+Bật thư viện libiio không đồng nghĩa mọi tiện ích dòng lệnh đều đã được đưa vào image.
 
 ---
 
-## 11. Board firmware and profiles
+## 10. Firmware và profile ADRV
 
-The ADRV firmware recipe is located at:
+Recipe firmware nằm tại:
 
 ```text
 project-spec/meta-user/recipes-apps/adrv-firmware/adrv-firmware.bb
 ```
 
-Associated files are under:
+Các file liên quan nằm dưới:
 
 ```text
 project-spec/meta-user/recipes-apps/adrv-firmware/files/
 ```
 
-The image must install the exact ADRV firmware/profile files required by the custom driver, normally under:
+Sau khi build, firmware/profile cần được cài vào đúng vị trí mà driver hoặc script yêu cầu, thường là:
 
 ```text
 /lib/firmware/
 ```
 
-The project also provides the board initialization script:
-
-```text
-/usr/bin/adrv-firmware.sh
-```
-
-Do not assume that `adrv-firmware.zip` at repository root is automatically identical to the firmware set inside `project-spec`. Compare filenames/checksums before replacing a validated set.
-
-Typical checks on the board:
+Kiểm tra trên bo:
 
 ```bash
 ls -lah /lib/firmware | grep -Ei 'adrv|9025|9029'
 ls -l /usr/bin/adrv-firmware.sh
+```
+
+Nếu cần đối chiếu phiên bản:
+
+```bash
 sha256sum /lib/firmware/*ADRV* 2>/dev/null
 ```
 
+Không thay firmware/profile chỉ vì tên file giống nhau. Khi bàn giao nên lưu cả checksum của bộ đã kiểm thử.
+
 ---
 
-## 12. Device tree
+## 11. Device tree
 
-Board-specific device-tree changes should be maintained in:
+File chính cần kiểm tra:
 
 ```text
 project-spec/meta-user/recipes-bsp/device-tree/files/system-user.dtsi
 ```
 
-The corresponding recipe/bbappend is under:
+Không sửa trực tiếp các file sinh dưới `build/tmp`.
 
-```text
-project-spec/meta-user/recipes-bsp/device-tree/
-```
+Với ADRV9029 cần đối chiếu ít nhất:
 
-Do not edit the generated files under `build/tmp` because they can be overwritten on the next build.
-
-For ADRV9029 verify at least:
-
-- ADRV SPI node and `compatible` string.
-- SPI chip select and maximum frequency.
-- Reference/device clocks.
-- SYSREF/reset/control GPIOs.
+- Node SPI của ADRV.
+- `compatible`.
+- Chip select.
+- SPI frequency.
+- Reference clock.
+- SYSREF.
+- Reset/control GPIO.
 - JESD204 links.
-- AXI transceiver nodes.
-- AXI JESD RX/TX nodes.
-- AXI ADC/DAC cores.
-- RX/TX DMA nodes.
-- Interrupts.
-- Reserved memory/CMA if required.
-- `status = "okay"` on all required blocks.
+- AXI transceiver.
+- AXI JESD RX/TX.
+- AXI ADC/DAC.
+- RX/TX DMA.
+- Interrupt.
+- CMA/reserved memory nếu thiết kế yêu cầu.
+- `status = "okay"` cho các block cần sử dụng.
 
-The clock SI5518 is board-specific and is described separately in [SI5518_and_Apps_Guide.md](SI5518_and_Apps_Guide.md).
+Build lại device tree:
+
+```bash
+petalinux-build -c device-tree
+```
+
+Clock SI5518 được mô tả riêng trong [SI5518_and_Apps_Guide.md](SI5518_and_Apps_Guide.md).
 
 ---
 
-## 13. Important Yocto/PetaLinux paths
+## 12. Trình tự build khuyến nghị
 
-| Purpose | Path |
-|---|---|
-| User project layer | `<PROJECT_DIR>/project-spec/meta-user/` |
-| User layer config | `<PROJECT_DIR>/project-spec/meta-user/conf/petalinuxbsp.conf` |
-| Device-tree customization | `<PROJECT_DIR>/project-spec/meta-user/recipes-bsp/device-tree/files/system-user.dtsi` |
-| ADRV custom driver recipe | `<PROJECT_DIR>/project-spec/meta-user/recipes-modules/adrv9025-custom/adrv9025-custom.bb` |
-| ADRV custom driver source | `<PROJECT_DIR>/project-spec/meta-user/recipes-modules/adrv9025-custom/files/adrv902x/` |
-| Firmware recipe | `<PROJECT_DIR>/project-spec/meta-user/recipes-apps/adrv-firmware/` |
-| SI5518 app | `<PROJECT_DIR>/project-spec/meta-user/recipes-apps/si5518config/` |
-| TX app | `<PROJECT_DIR>/project-spec/meta-user/recipes-apps/tx-dma/` |
-| RX app | `<PROJECT_DIR>/project-spec/meta-user/recipes-apps/rx-dma/` |
-| DPD app | `<PROJECT_DIR>/project-spec/meta-user/recipes-apps/dpd-app/` |
-| External ADI Yocto layer | `<ADI_DIR>/meta-adi/meta-adi-xilinx/` |
-| ADI upstream ADRV driver | `<ADI_DIR>/linux/drivers/iio/adc/adrv902x/` |
-| Generated PL device tree | `<PROJECT_DIR>/components/plnx_workspace/device-tree/device-tree/pl.dtsi` |
-| Build output images | `<PROJECT_DIR>/images/linux/` |
-
-For debugging Yocto recipes, generated/work files will appear under `build/tmp`, but those files are build artifacts and must not be used as the permanent source of a fix.
-
----
-
-## 14. Build sequence
-
-### 14.1. Build the custom ADRV module
-
-```bash
-cd <PROJECT_DIR>
-
-petalinux-build -c adrv9025-custom
-```
-
-If recipe/source changes are not being picked up:
-
-```bash
-petalinux-build -c adrv9025-custom -x cleansstate
-petalinux-build -c adrv9025-custom
-```
-
-### 14.2. Build firmware/apps
+### 12.1. Build firmware và ứng dụng
 
 ```bash
 petalinux-build -c adrv-firmware
@@ -494,275 +385,222 @@ petalinux-build -c rx-dma
 petalinux-build -c dpd-app
 ```
 
-### 14.3. Build device tree/kernel when changed
+### 12.2. Build kernel/device tree khi có thay đổi
 
 ```bash
-petalinux-build -c device-tree
 petalinux-build -c kernel
+petalinux-build -c device-tree
 ```
 
-### 14.4. Full image
+### 12.3. Build toàn bộ image
 
 ```bash
 petalinux-build
 ```
 
-Always perform the final full build before creating the image that will be tested on the board.
+Sau khi build riêng từng recipe vẫn nên chạy full build để cập nhật image/rootfs cuối cùng.
 
-Packaging/SD boot steps are in [PetaLinux_Common_Guide.md](PetaLinux_Common_Guide.md).
-
----
-
-## 15. Boot order for this board
-
-The recommended board-side sequence is:
+Output chính thường nằm tại:
 
 ```text
-Boot PetaLinux
-   |
-   v
-Check SD/rootfs/firmware
-   |
-   v
-Configure SI5518
-   |
-   v
-Verify reference clocks
-   |
-   v
-Load/init ADRV9029
-   |
-   v
-Check JESD204 links
-   |
-   v
-Check IIO devices
-   |
-   v
-Run RX/TX test
-   |
-   v
-Run DPD test if required
+<PROJECT_DIR>/images/linux/
 ```
 
-Do not use TX/RX failure as the first diagnostic signal if SI5518 or JESD initialization has not already been confirmed.
+Ví dụ:
+
+```text
+image.ub
+system.dtb
+boot.scr
+BOOT.BIN
+```
+
+Việc đóng gói BOOT.BIN và chuẩn bị SD card xem trong `PetaLinux_Common_Guide.md`.
 
 ---
 
-## 16. Board-side driver checks
+## 13. Kiểm tra sau khi boot
 
-### 16.1. Basic Linux information
+### 13.1. Xác nhận hệ thống Linux
 
 ```bash
 uname -a
 cat /etc/os-release
 cat /proc/cmdline
+cat /proc/device-tree/model
+dmesg | tail -n 150
 ```
 
-### 16.2. ADRV module
+### 13.2. Kiểm tra SPI
 
 ```bash
-find /lib/modules/$(uname -r) -type f | grep -Ei 'adrv9025|adrv9029'
-modinfo adrv9025_custom 2>/dev/null || true
-lsmod | grep -Ei 'adrv9025|adrv9029'
+ls -l /dev/spidev*
+ls -l /sys/bus/spi/devices/
 ```
 
-The exact module filename should be confirmed from the recipe/build output; recipe name and kernel module name do not always have to be identical.
-
-### 16.3. SPI device/driver binding
+Xem driver bind với từng SPI device:
 
 ```bash
-for d in /sys/bus/spi/devices/spi*; do
-    [ -e "$d" ] || continue
-    echo "=== $d ==="
-    cat "$d/modalias" 2>/dev/null
-    readlink -f "$d/driver" 2>/dev/null
-    readlink -f "$d/of_node" 2>/dev/null
+for d in /sys/bus/spi/devices/spi*
+do
+  [ -d "$d" ] || continue
+  echo "=== $d ==="
+  readlink -f "$d/driver" 2>/dev/null
+  cat "$d/modalias" 2>/dev/null
 done
 ```
 
-### 16.4. Kernel log
-
-```bash
-dmesg | grep -Ei 'adrv|9025|9029|jesd|iio|dmac|axi|spi'
-```
-
-Look for:
-
-- Firmware load failure.
-- Probe failure.
-- SPI communication error.
-- Clock not found/not locked.
-- JESD state-machine error.
-- DMA/IIO registration failure.
-
-### 16.5. IIO devices
+### 13.3. Kiểm tra IIO
 
 ```bash
 ls -l /sys/bus/iio/devices/
-iio_info 2>/dev/null | tee /tmp/iio_info.txt
+iio_info
 ```
 
-Identify which `iio:deviceN` corresponds to:
-
-- ADRV9029 transceiver.
-- AXI RX core.
-- AXI TX/DDS core.
-
-Do not hard-code an `iio:deviceN` index unless it has been confirmed on the exact image; numbering can change.
-
-### 16.6. JESD
-
-If the ADI `jesd-status` tool is installed:
+Liệt kê tên IIO device:
 
 ```bash
-jesd_status 2>/dev/null || true
+for d in /sys/bus/iio/devices/iio:device*
+do
+  [ -d "$d" ] || continue
+  printf '%s: ' "$d"
+  cat "$d/name" 2>/dev/null
+done
 ```
 
-Also inspect kernel logs and available JESD sysfs/debugfs nodes. A driver probe alone does not prove that JESD links are healthy.
-
----
-
-## 17. Recommended driver-porting workflow
-
-When another team wants to port the ADRV9029 driver, use the following order.
-
-### Step 1 — Reproduce the current board
-
-First build and run the current project without changing the ADRV driver.
-
-Required evidence:
-
-- Linux boots.
-- SI5518 is configured and clocks are valid.
-- `adrv9025-custom` probes.
-- Firmware is loaded.
-- JESD links are valid.
-- IIO devices appear.
-- At least one known RX/TX test works.
-
-This creates a working reference before porting.
-
-### Step 2 — Freeze the versions
-
-Record:
+### 13.4. Kiểm tra log ADRV/JESD
 
 ```bash
-petalinux-util --version
-git -C <ADI_DIR>/linux rev-parse HEAD
-git -C <ADI_DIR>/meta-adi rev-parse HEAD
+dmesg | grep -Ei 'adrv|9025|9029|jesd|axi|dmac|iio'
 ```
 
-Also record:
+Cần xác nhận không chỉ driver xuất hiện mà còn:
 
-- XSA/bitstream checksum.
-- `project-spec` commit/version.
-- ADRV firmware/profile checksums.
-- SI5518 firmware/config checksums.
+- Probe thành công.
+- SPI giao tiếp được.
+- Firmware/profile được nạp.
+- JESD link lên đúng trạng thái.
+- IIO device được tạo.
+- DMA hoạt động với bài thử RX/TX.
 
-### Step 3 — Compare custom vs upstream
+### 13.5. Kiểm tra module
 
-Generate and review a diff between:
+Nếu driver được build dạng module:
 
-```text
-ADI linux/drivers/iio/adc/adrv902x/
+```bash
+lsmod
+modinfo <TEN_MODULE>
 ```
 
-and:
-
-```text
-meta-user/recipes-modules/adrv9025-custom/files/adrv902x/
-```
-
-Separate changes into:
-
-1. Required kernel compatibility changes.
-2. Board-specific changes.
-3. ADRV9029/DPD feature changes.
-4. Temporary/debug changes that should not be ported.
-
-### Step 4 — Port incrementally
-
-Port one dependency class at a time:
-
-```text
-compile
- -> module load
- -> SPI probe
- -> firmware load
- -> JESD initialization
- -> IIO registration
- -> RX capture
- -> TX playback
- -> DPD
-```
-
-Do not jump directly from "module compiles" to RF functional testing.
+Nếu driver được build vào kernel (`=y`) thì không xuất hiện trong `lsmod`.
 
 ---
 
-## 18. Common mistakes
+## 14. Trình tự bring-up bo ADRV9029
 
-### Driver builds but is not in rootfs
+Khuyến nghị kiểm tra theo thứ tự:
 
-Check that the package is enabled in `petalinux-config -c rootfs`, then run a full build.
+```text
+Boot Linux
+   ↓
+Kiểm tra device tree / SPI / GPIO
+   ↓
+Cấu hình SI5518
+   ↓
+Xác nhận reference clock và SYSREF
+   ↓
+Nạp firmware/profile ADRV
+   ↓
+Kiểm tra probe ADRV
+   ↓
+Kiểm tra JESD204
+   ↓
+Kiểm tra IIO
+   ↓
+Kiểm tra RX
+   ↓
+Kiểm tra TX
+   ↓
+Kiểm tra DPD nếu cần
+```
 
-### Driver exists but does not probe
-
-Check device tree `compatible`, SPI bus/chip-select, reset, clocks and firmware path.
-
-### Two ADRV drivers are enabled
-
-Do not enable both the stock in-kernel ADRV driver and the custom driver if they bind to the same device.
-
-### Editing `build/tmp`
-
-Changes under `build/tmp` are temporary. Move permanent changes into `project-spec/meta-user`.
-
-### Cloning ADI `main` for a 2023.2 project
-
-`main` changes over time and can introduce kernel/API dependencies unrelated to this baseline. Start from **2023_R2**, then port newer commits intentionally.
-
-### IIO device number is hard-coded
-
-`iio:deviceN` numbering is not guaranteed. Detect devices by name/sysfs instead.
-
-### Testing ADRV before clock/JESD prerequisites
-
-On this board SI5518 configuration is part of the bring-up dependency chain. Follow [SI5518_and_Apps_Guide.md](SI5518_and_Apps_Guide.md).
-
----
-
-## 19. Minimum handover information
-
-When giving this project to another team, provide:
-
-- PetaLinux/Vivado version: **2023.2**.
-- XSA + bitstream used by the tested image.
-- `project-spec` revision.
-- ADI Linux branch + exact commit.
-- `meta-adi` branch + exact commit.
-- Custom driver source revision.
-- ADRV firmware/profile checksums.
-- SI5518 firmware/config/patch checksums.
-- Boot mode and SD contents.
-- Known-good boot log.
-- Known-good JESD status/log.
-- Known-good RX/TX test and expected result.
-
-Without these version pins, another team may be able to build an image but still not reproduce the known-good board behavior.
+Không nên debug RX/TX trước khi clock và JESD đã ổn định.
 
 ---
 
-## 20. References
+## 15. Khi port sang project khác
 
-- [PetaLinux Common Guide](PetaLinux_Common_Guide.md)
-- [SI5518 and ADRV9029 Apps Guide](SI5518_and_Apps_Guide.md)
-- ADI Linux: <https://github.com/analogdevicesinc/linux>
-- ADI meta-adi: <https://github.com/analogdevicesinc/meta-adi>
-- ADI HDL: <https://github.com/analogdevicesinc/hdl>
-- AMD PetaLinux 2023.2 UG1144: <https://docs.amd.com/r/2023.2-English/ug1144-petalinux-tools-reference-guide>
+Khi một đội khác cần port ADRV9029, nên bàn giao theo nhóm sau.
 
-### Release note
+### Phần dùng chung
 
-ADI **2023_R2** is the matching ADI software/HDL generation for the 2023.2 Xilinx tool release. After a successful board build, replace branch-only references in the handover record with the exact tested commit SHAs.
+- PetaLinux release.
+- Cách cài môi trường.
+- Cách build.
+- Cách đóng gói.
+- Cách boot/nạp image.
+- Cách xem log và kiểm tra Linux.
+
+Các nội dung này nằm trong `PetaLinux_Common_Guide.md`.
+
+### Phần riêng ADRV9029
+
+- XSA/bitstream đúng revision.
+- ADI release và commit SHA.
+- `meta-adi-xilinx` path.
+- Kernel config.
+- Rootfs config.
+- `system-user.dtsi`.
+- Firmware/profile và checksum.
+- Cấu hình clock/SYSREF.
+- Thứ tự bring-up ADRV/JESD.
+- Bài test RX/TX tham chiếu.
+- Log của một lần chạy tốt.
+
+Mục tiêu đầu tiên khi port không phải sửa code ngay mà là tái tạo được một baseline có thể build và boot, sau đó xác nhận lần lượt SPI → clock → ADRV → JESD → IIO → DMA.
+
+---
+
+## 16. Checklist nhanh
+
+### HOST
+
+```text
+[ ] PetaLinux 2023.2 đã được source đúng
+[ ] XSA đúng board/revision
+[ ] ADI linux 2023_R2 đã clone
+[ ] meta-adi 2023_R2 đã clone
+[ ] Ghi lại commit SHA
+[ ] meta-adi-xilinx đã thêm vào User Layers
+[ ] Kernel config đã kiểm tra
+[ ] Rootfs packages đã bật
+[ ] system-user.dtsi đã đối chiếu với XSA
+[ ] Firmware/profile đúng bộ
+[ ] petalinux-build hoàn tất
+```
+
+### BOARD
+
+```text
+[ ] Linux boot thành công
+[ ] SPI device xuất hiện
+[ ] GPIO/reset đúng
+[ ] SI5518 được cấu hình
+[ ] Reference clock ổn định
+[ ] Firmware/profile ADRV tồn tại
+[ ] ADRV probe thành công
+[ ] JESD link hoạt động
+[ ] IIO device xuất hiện
+[ ] RX test đạt
+[ ] TX test đạt
+[ ] Log được lưu lại
+```
+
+---
+
+## 17. Tài liệu liên quan trong repository
+
+- [PetaLinux_Common_Guide.md](PetaLinux_Common_Guide.md) — hướng dẫn chung môi trường, build, boot và kiểm tra.
+- [SI5518_and_Apps_Guide.md](SI5518_and_Apps_Guide.md) — SI5518, firmware script, TX/RX DMA và DPD.
+- `project-spec.zip` — dữ liệu PetaLinux của project.
+- `adrv-firmware.zip` — gói firmware lưu trữ trong repository.
