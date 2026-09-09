@@ -1,15 +1,7 @@
 # PetaLinux Common Guide
 ## Hướng dẫn chung: môi trường → build → nạp/boot → kiểm tra
 
-**Mục tiêu:** giúp đội tiếp nhận tự tạo hệ thống PetaLinux từ đầu vào phần cứng/BSP và nguồn phần mềm được bàn giao, sau đó build, chạy trên board và lưu bằng chứng kiểm tra.
-
-Tài liệu không yêu cầu `project-spec.zip` và không hướng dẫn khôi phục project cá nhân. Quy trình dùng chung; các giá trị riêng phải lấy từ tài liệu của board.
-
-**Mốc cú pháp:** PetaLinux **2023.2**, chủ yếu Zynq-7000 và Zynq UltraScale+ MPSoC. Khi dùng release khác, đối chiếu UG1144 cùng release và `--help`; không coi cú pháp này áp dụng nguyên trạng cho mọi phiên bản. Versal/MicroBlaze có luồng boot khác, cần phần bổ sung tương ứng.
-
-**Trạng thái:** đã đối chiếu quy trình với tài liệu AMD; chưa chạy build hoặc thử board trong lần biên soạn này. Các tiêu chí PASS bên dưới chỉ được đánh dấu sau khi thực hiện.
-
-## 1. Quy ước và phân chia tài liệu
+## 1. Quy ước 
 
 - **HOST:** máy Linux để cài công cụ, build, chuẩn bị thẻ.
 - **BOARD:** Linux chạy trên phần cứng đích.
@@ -26,9 +18,8 @@ Tài liệu không yêu cầu `project-spec.zip` và không hướng dẫn khôi
 | Kiểm tra Linux và cách kiểm tra driver | Tên driver, firmware, device tree, địa chỉ, clock/reset |
 | Mẫu báo cáo và xử lý lỗi chung | SI5518, ADRV9029, JESD, RF và bài test ứng dụng |
 
-Trong repository này, nội dung riêng hiện có ở [Petalinux My Guide.txt](Petalinux%20My%20Guide.txt) và [SI5518_and_Apps_Guide.md](SI5518_and_Apps_Guide.md). File My Guide hiện vẫn chứa luồng phục hồi project cũ; chỉ tra cứu các dữ kiện board phù hợp, không coi ZIP là đầu vào bắt buộc của hướng dẫn chung.
 
-## 2. Đầu vào cần bàn giao
+## 2. Đầu vào 
 
 Trước khi build, đội cung cấp và đội tiếp nhận thống nhất:
 
