@@ -1,18 +1,763 @@
-source /opt/tools/Xilinx/petalinux/2023.2/settings.sh - môi trường petalinux
+HƯỚNG DẪN BUILD, BOOT VÀ KIỂM TRA DRIVER ADRV9029
+PetaLinux 2023.2 — bo Zynq UltraScale+ MPSoC XCZU15EG
+Cập nhật: 09/09/2026
+Repository: https://github.com/Fuong-Tr/ADRV
 
-petalinux-create -t project -n <name_prj> --template zynqMP - tạo project petalinux
+0. PHẠM VI VÀ CÁCH ĐỌC
 
-petalinux-config --get-hw-description= </path/to/design.xsa> - import file xsa
+Mục tiêu: người nhận tự dựng môi trường, build image, boot trên đúng bo,
+khởi tạo ADRV9029 và có bằng chứng kiểm tra trước khi port driver.
 
-adi$ git clone -b 2023_R2 --depth 1 https://github.com/analogdevicesinc/meta-adi.git --import ...
-Lệnh này để ....
-config -> yocto -> userlayer -> add path adi
+Tài liệu này tập trung ADRV9029 và phần Linux/FPGA cần cho driver.
+Cấu hình clock SI5518, thao tác các app TX/RX và DPD được trình bày riêng:
+SI5518_and_Apps_Guide.md trong cùng repository.
+Clock phần cứng vẫn phải sẵn sàng trước khi khởi tạo ADRV9029.
 
-1 IP để chạy được phải có cả driver và app
-Sau khi import từ xsa, các driver có sẵn sẽ đc lưu ở device tree
-pl.dtsi: Chứa mô tả các IP được lập trình trong vùng Programmable Logic (PL)
-Có thể sửa ... để ...
-pcw.dtsi: Chứa mô tả phần cứng liên quan đến vùng Processing System (PS)
+Quy ước:
+- HOST: máy Linux dùng để build; chạy Bash với tài khoản thông thường.
+- BOARD: terminal Linux trên bo ADRV9029; lệnh điều khiển phần cứng cần root.
+- Các khối bash là lệnh. Dòng bắt đầu bằng # là giải thích.
+- Các khối text là thông tin hoặc mẫu kết quả, không phải lệnh.
 
-Viết user-app thực hiện chức năng ...
-petalinux-create -t apps -n <TEN_APP> --enable lệnh tạo user-app
+Mức độ xác nhận:
+- Nội dung đã đối chiếu với mã trong project-spec.zip và tài liệu AMD/ADI.
+- Chưa thực hiện build PetaLinux hoặc đo trên bo trong lần biên soạn này.
+- Kết quả "mong đợi" bên dưới là tiêu chí kiểm tra, không phải log đo thực tế.
+- Phiên bản Ubuntu của máy lab, commit kernel/meta-adi gốc và các sửa đổi
+  ngoài ZIP chưa được bàn giao. Bộ revision ở mục 3 là mốc nguồn công khai
+  để thử build có kiểm soát, chưa được chứng nhận trùng bản đã chạy tại lab.
+
+1. CẤU HÌNH ĐÃ ĐỌC TỪ NGUỒN
+
+Thông số                     Giá trị / bằng chứng
+PetaLinux                    2023.2, từ configs/plnxtool.conf và log XSCT
+Vivado xuất XSA              2023.2, từ xsa.xml trong system.xsa
+FPGA                        xczu15eg-ffvb1156-2-i
+CPU / kiến trúc              Cortex-A53 / AArch64
+Tên máy cấu hình             zynqmp-generic-xczu15eg
+Tên hệ thống trong config    RU_PNK_petalinux
+Console                     ttyPS0, 115200 baud
+Root filesystem             INITRD; image recipe petalinux-image-minimal
+FPGA Manager                Chưa bật trong cấu hình gốc
+Clock thiết bị ADRV          245,76 MHz theo profile
+I/Q TX và RX                 245,76 MSPS theo profile
+LO khởi tạo                  5,6 GHz theo ActiveUtilInit.profile
+JESD                        JESD204B, subclass 1; TX/RX dùng 4 lane mỗi link
+Profile link hoạt động      M=8, Np=16, F=4, K=32
+Driver tùy chỉnh             adrv9025_custom.ko
+Tên thiết bị IIO dự kiến     adrv9029
+
+Tên adrv9025/adrv9026 xuất hiện trong API, firmware và tên IP là tên đang
+được sử dụng trong thiết kế này. Đích của hướng dẫn là ADRV9029. Không đổi
+tên file/module chỉ để tất cả đều mang tên adrv9029: device tree, recipe,
+Makefile và script đang tham chiếu chính các tên đó.
+
+LO 5,6 GHz là giá trị khởi tạo từ profile, không phải giới hạn duy nhất
+của chip và không tự xác nhận dải làm việc của toàn bộ bo RF.
+
+2. CHUẨN BỊ MÔI TRƯỜNG BUILD — HOST
+
+2.1. Hệ điều hành và tài nguyên
+
+Chọn Ubuntu x86_64 thuộc danh sách hỗ trợ PetaLinux 2023.2, ví dụ
+Ubuntu 22.04.2 LTS hoặc 20.04.6 LTS. Đây là lựa chọn tham khảo của tài liệu;
+chưa có bằng chứng máy lab gốc dùng đúng bản Ubuntu nào.
+
+Theo UG1144 2023.2: tối thiểu 8 GB RAM, 100 GB dung lượng trống và CPU
+tối thiểu 8 lõi. Với build thực tế nên bố trí thêm RAM và dung lượng cho
+downloads, sstate-cache và build/tmp. Ghi lại tài nguyên thật đã sử dụng.
+
+Dùng thư mục trên filesystem Linux, đường dẫn không có khoảng trắng.
+Cần Internet để lấy sources và cache khi chưa có bộ build offline.
+
+~~~bash
+cat /etc/os-release
+uname -m
+free -h
+df -h .
+nproc
+readlink -f /bin/sh
+~~~
+
+2.2. Gói phát triển
+
+Trên Ubuntu 22.04, có thể chuẩn bị nhóm công cụ thông dụng dưới đây.
+Đối chiếu thêm bảng packages của AMD Release Notes 2023.2 và xử lý các gói
+thiếu do installer báo; danh sách này không mô tả máy lab gốc.
+
+~~~bash
+sudo apt-get update
+sudo apt-get install -y \
+  build-essential gcc-multilib gawk git make wget curl ca-certificates \
+  diffstat chrpath socat xterm autoconf automake libtool texinfo \
+  tar unzip zip cpio gzip xz-utils pax rsync file bc \
+  python3 python3-pip python3-pexpect python3-git python3-jinja2 \
+  python-is-python3 pylint \
+  libncurses5-dev libtinfo5 zlib1g-dev libssl-dev libselinux1 \
+  libegl1-mesa libsdl1.2-dev gnupg \
+  iproute2 net-tools iputils-ping debianutils \
+  screen u-boot-tools device-tree-compiler
+~~~
+
+Nếu installer yêu cầu thư viện 32-bit:
+
+~~~bash
+sudo dpkg --add-architecture i386
+sudo apt-get update
+sudo apt-get install -y zlib1g:i386
+~~~
+
+UG1144 yêu cầu /bin/sh trỏ tới bash. Nếu đang trỏ tới dash, trên máy build
+chuyên dụng thực hiện lệnh sau và chọn No khi được hỏi dùng dash làm /bin/sh:
+
+~~~bash
+sudo dpkg-reconfigure dash
+~~~
+
+2.3. Cài và kích hoạt PetaLinux 2023.2
+
+Tải bộ cài 2023.2 từ AMD. Thay đường dẫn installer bên dưới bằng tên file
+thật đã tải. Cài bằng tài khoản thường; không dùng sudo để chạy installer
+hoặc các lệnh petalinux-build.
+
+~~~bash
+export ADRV_PLNX_DIR="$HOME/tools/petalinux/2023.2"
+mkdir -p "$ADRV_PLNX_DIR"
+export ADRV_INSTALLER="$HOME/Downloads/TEN_FILE_CAI_PETALINUX_2023_2.run"
+test -f "$ADRV_INSTALLER"
+chmod u+x "$ADRV_INSTALLER"
+"$ADRV_INSTALLER" --dir "$ADRV_PLNX_DIR" --platform aarch64
+source "$ADRV_PLNX_DIR/settings.sh"
+command -v petalinux-create
+command -v petalinux-config
+command -v petalinux-build
+~~~
+
+Mỗi terminal mới cần source lại settings.sh. Máy gốc dùng đường dẫn:
+  /opt/tools/Xilinx/petalinux/2023.2/settings.sh
+Máy nhận được phép cài ở đường dẫn khác; phải kích hoạt đúng bản 2023.2.
+Không sao chép nguyên thư mục công cụ đã cài từ máy khác để thay cho cài đặt.
+
+XSA và bitstream đã có trong ZIP. Chỉ cần Vivado 2023.2 khi muốn thay đổi/
+xuất lại phần cứng. Để tái tạo toàn bộ thiết kế FPGA từ RTL còn cần project
+Vivado/HDL gốc; XSA và .bit là dữ liệu bàn giao phần cứng, không thay cho RTL.
+
+3. LẤY NGUỒN VÀ CỐ ĐỊNH PHIÊN BẢN — HOST
+
+Dùng một thư mục làm việc mới. Các lệnh phục hồi dưới đây dành cho project
+mới tạo, không chạy đè lên project đang phát triển.
+
+~~~bash
+export ADRV_WORK="$HOME/adrv9029-work"
+mkdir -p "$ADRV_WORK"
+cd "$ADRV_WORK"
+git clone https://github.com/Fuong-Tr/ADRV.git source
+export ADRV_REPO="$ADRV_WORK/source"
+git -C "$ADRV_REPO" rev-parse HEAD
+sha256sum "$ADRV_REPO/project-spec.zip"
+~~~
+
+Bản ZIP dùng để viết tài liệu có SHA-256:
+  743cb7e8adda47676bbd3ce0201ba544976e4b119e293019ee843a8496f84f10
+
+Mốc source repository lúc đối chiếu:
+  2de76efbbf60f37d84ba224be8a4008353549a85
+Nếu ZIP đã được cập nhật, dùng bộ source và hướng dẫn tương ứng với bản mới;
+không mặc định các địa chỉ/profile ở tài liệu này vẫn đúng.
+
+~~~bash
+unzip "$ADRV_REPO/project-spec.zip" -d "$ADRV_WORK/reference"
+git clone --branch 2023_R2 --single-branch \
+  https://github.com/analogdevicesinc/meta-adi.git "$ADRV_WORK/meta-adi"
+git -C "$ADRV_WORK/meta-adi" checkout --detach \
+  b406e8ff6b735deb5dbfcb8a6d46662b8a371d14
+export ADRV_META_LAYER="$ADRV_WORK/meta-adi/meta-adi-xilinx"
+test -f "$ADRV_META_LAYER/conf/layer.conf"
+~~~
+
+Nhánh meta-adi 2023_R2 xác nhận hỗ trợ PetaLinux 2023.2.
+Mốc công khai đã đọc ngày 09/09/2026:
+  meta-adi: b406e8ff6b735deb5dbfcb8a6d46662b8a371d14
+  linux:    86d61468a7856e952c7ca237f798d86d6abd2e27
+  libiio:   5e1e9cb567ffd6d6d810fdd7c44fe79e9613f56a
+
+Đây là bộ revision để bắt đầu thử tái tạo, không phải tuyên bố "đã chạy tốt".
+Ưu tiên bộ commit và patch đã kiểm thử do chủ bo bàn giao nếu có.
+meta-adi ở mốc trên dùng AUTOREV cho kernel/libiio khi build online; chỉ
+chốt nhánh meta-adi chưa đảm bảo hai lần build lấy cùng kernel/libiio.
+
+4. PHỤC HỒI PROJECT TỪ ZIP — HOST
+
+~~~bash
+cd "$ADRV_WORK"
+petalinux-create -t project --template zynqMP --name adrv9029_linux
+export ADRV_PROJECT="$ADRV_WORK/adrv9029_linux"
+cd "$ADRV_PROJECT"
+
+# Giữ template để đối chiếu; chỉ thao tác trên project mới tạo.
+mv project-spec project-spec.template
+mkdir -p project-spec/configs
+cp -a "$ADRV_WORK/reference/project-spec/meta-user" project-spec/
+cp -a "$ADRV_WORK/reference/project-spec/hw-description" project-spec/
+cp "$ADRV_WORK/reference/project-spec/configs/config" project-spec/configs/
+cp "$ADRV_WORK/reference/project-spec/configs/rootfs_config" project-spec/configs/
+cp "$ADRV_WORK/reference/project-spec/attributes" project-spec/
+~~~
+
+Chỉ phục hồi các đầu vào cần thiết. Không mang lại các file cấu hình đã
+sinh tự động như configs/plnxtool.conf, zynqmp-generic-xczu15eg.conf,
+configs/config.old hoặc log cũ; chúng có đường dẫn tuyệt đối của máy lab.
+PetaLinux sẽ sinh lại theo máy hiện tại.
+
+Sửa riêng đường dẫn user layer trong config trước khi mở PetaLinux:
+
+~~~bash
+python3 - <<'PY'
+from pathlib import Path
+import os
+import re
+p = Path("project-spec/configs/config")
+s = p.read_text()
+line = 'CONFIG_USER_LAYER_0="' + os.environ["ADRV_META_LAYER"] + '"'
+s, count = re.subn(r'^CONFIG_USER_LAYER_0=.*$', lambda m: line, s,
+                  flags=re.MULTILINE)
+if count != 1:
+    raise SystemExit("Khong tim thay duy nhat CONFIG_USER_LAYER_0")
+p.write_text(s)
+PY
+
+petalinux-config --get-hw-description="$ADRV_WORK/reference/project-spec/hw-description"
+~~~
+
+Truyền thư mục chứa system.xsa ở vùng reference giúp tránh nhập đè từ chính
+file đích của project. Trong menu xác nhận:
+- Yocto Settings / User Layers: đường dẫn ADRV_META_LAYER ở trên.
+- DTG Settings / MACHINE_NAME: template, theo bo custom trong archive.
+- Image Packaging Configuration / Root filesystem type: INITRD.
+- INITRAMFS/INITRD Image name: petalinux-image-minimal.
+- UART: psu_uart_0, 115200.
+- Giữ lựa chọn FPGA Manager/overlay như cấu hình gốc: đang tắt.
+- Nếu chỉ boot SD, có thể tắt Copy final images to TFTPBOOT để không phụ
+  thuộc /tftpboot của máy lab.
+
+Không tự chọn BSP zcu102 hoặc device tree zcu102 chỉ vì chip RF cùng họ.
+Bo này dùng XCZU15EG và thiết kế riêng.
+
+Để cố định bộ kernel/libiio công khai của mục 3 cho lần thử mới, thêm vào
+project-spec/meta-user/conf/petalinuxbsp.conf bằng editor, mỗi khóa một lần:
+
+~~~text
+SRCREV:pn-linux-xlnx = "86d61468a7856e952c7ca237f798d86d6abd2e27"
+SRCREV:pn-libiio = "5e1e9cb567ffd6d6d810fdd7c44fe79e9613f56a"
+~~~
+
+Nếu có revision đã chạy tại lab, dùng revision đó và các patch tương ứng
+thay cho hai giá trị tham khảo này; ghi lại thay đổi trong hồ sơ build.
+
+5. DEVICE TREE VÀ DRIVER CẦN GIỮ NHẤT QUÁN
+
+Device tree mô tả phần cứng; nó không chứa mã driver.
+- pl.dtsi: phần mô tả PL được sinh từ XSA.
+- pcw.dtsi: thông tin cấu hình phần PS được sinh từ XSA.
+- system-user.dtsi: các ghi đè/tùy chỉnh của dự án.
+- Driver: mã kernel hoặc module .ko; ứng dụng gọi các giao diện driver.
+
+File chính:
+  project-spec/meta-user/recipes-bsp/device-tree/files/system-user.dtsi
+
+File meta-user/conf/layer.conf có:
+  BBMASK += "meta-adi-xilinx/recipes-bsp/device-tree/"
+
+Thiết lập này chặn recipe device-tree của meta-adi, để dự án dùng luồng
+sinh device tree của PetaLinux và system-user.dtsi tùy chỉnh. Giữ nguyên
+khi tái tạo bản này; không chép thêm cấu hình KERNEL_DTB của bo ADI tham
+khảo theo thói quen. Thay cách sinh DT cần được xem là một thay đổi riêng.
+
+Các liên kết đáng kiểm tra trong system-user.dtsi:
+- Node adrv9029@0 trên &spi1; reset-gpios dùng &gpio 100.
+- dev_clk tham chiếu misc_clk_0; clock vật lý phải thực sự tồn tại.
+- Các profile, firmware, bảng gain/attenuation được gọi bằng tên file.
+- Link TX là DEFRAMER0_LINK_TX = 0; RX là FRAMER0_LINK_RX = 2.
+- RX ADC/TPL có spibus-connected trỏ về ADRV.
+- TX/RX DMA và TPL phải khớp địa chỉ trong XSA.
+
+Địa chỉ của bản này:
+  RX DMA         0x9C400000
+  TX DMA         0x9C420000
+  RX ADC/TPL     0x84A00000, vùng map trong DTS là 0x8000
+  TX DAC/TPL     0x84A04000, vùng map trong DTS là 0x4000
+  RX JESD        0x84AA0000
+  TX JESD        0x84A90000
+  RX XCVR        0x84A60000
+  TX XCVR        0x84A80000
+  TX DDR buffer  0x60000000, kích thước 0x01000000 = 16 MiB, reserved/no-map
+
+Đây là các giá trị của thiết kế bàn giao, không phải địa chỉ chuẩn cho mọi
+bo ADRV9029. Khi port, phải đối chiếu lại XSA, bản đồ bộ nhớ và driver.
+
+6. CẤU HÌNH KERNEL VÀ ROOTFS — HOST
+
+6.1. Driver đang dùng
+
+Recipe:
+  project-spec/meta-user/recipes-modules/adrv9025-custom/adrv9025-custom.bb
+
+Mã:
+  project-spec/meta-user/recipes-modules/adrv9025-custom/files/adrv902x/
+
+Makefile tạo adrv9025_custom.ko. Module này chứa các bổ sung sysfs cho DPD.
+Driver chuẩn trong kernel có CONFIG_ADRV9025 và module adrv9025_drv.
+Với bản tùy chỉnh, không bật đồng thời driver chuẩn cho cùng thiết bị.
+
+Archive có nhiều fragment lịch sử đặt CONFIG_ADRV9025=m, =y rồi tắt.
+Fragment ngày 30/06/2026 được liệt kê cuối và tắt driver chuẩn.
+Phải kiểm tra .config cuối cùng, không kết luận chỉ từ một fragment cũ.
+
+~~~bash
+cd "$ADRV_PROJECT"
+petalinux-config -c kernel
+~~~
+
+Dùng phím / trong menuconfig để tìm các symbol. Các phần cần có:
+- CONFIG_MODULES=y, CONFIG_SPI=y, controller SPI Cadence.
+- CONFIG_IIO và các phần IIO buffer/DMA engine.
+- CONFIG_JESD204=y và CONFIG_JESD204_TOP_DEVICE=y.
+- CONFIG_AXI_DMAC, CONFIG_AXI_ADXCVR, CONFIG_XILINX_TRANSCEIVER.
+- CONFIG_AXI_JESD204_TX và CONFIG_AXI_JESD204_RX.
+- CONFIG_CF_AXI_ADC và CONFIG_CF_AXI_DDS.
+- CONFIG_DEBUG_FS để đọc các thuộc tính debug khi cần.
+- CONFIG_ADRV9025 phải tắt trong bản dùng adrv9025_custom.
+
+CF_AXI_ADC cần được kiểm tra riêng: driver ADRV chuẩn thường select nó;
+sau khi tắt driver chuẩn để dùng module ngoài kernel, không được bỏ sót
+ADC core mà module tùy chỉnh phụ thuộc.
+
+Các yêu cầu kernel cho SI5518 và /dev/mem nằm trong tài liệu riêng.
+Nếu cần bổ sung fragment, đặt file .cfg trong recipes-kernel/linux/linux-xlnx/
+và thêm file vào SRC_URI của linux-xlnx_%.bbappend, sau các fragment cũ.
+Giữ lại chỉnh sửa bằng fragment/recipe, không chỉ sửa .config dưới build/tmp.
+
+6.2. Rootfs
+
+~~~bash
+petalinux-config -c rootfs
+~~~
+
+Giữ adrv9025-custom, adrv-firmware và kernel-modules.
+Các app đã có trong gói: si5518config, tx-dma, rx-dma, dpd-app.
+Cách dùng và yêu cầu bổ sung được tách sang SI5518_and_Apps_Guide.md.
+
+Hai tên gpio-demo và peekpoke đang được chọn trong rootfs_config gốc,
+nhưng không có recipe tương ứng trong ZIP hoặc cây meta-adi đã đối chiếu.
+Với bộ nguồn hiện có, bỏ chọn hai mục này khi tạo image ADRV9029.
+Nếu chủ bo cung cấp recipe riêng và có nhu cầu sử dụng thì thêm layer/
+recipe đó rồi mới bật lại. Không tạo app rỗng chỉ để vượt qua lỗi build.
+
+Sau khi lưu, kiểm tra:
+~~~bash
+grep -E 'CONFIG_(adrv9025-custom|adrv-firmware|gpio-demo|peekpoke)=' \
+  project-spec/configs/rootfs_config
+~~~
+
+7. BUILD VÀ KIỂM TRA ARTIFACT — HOST
+
+~~~bash
+cd "$ADRV_PROJECT"
+mkdir -p handoff-logs
+set -o pipefail
+petalinux-build 2>&1 | tee handoff-logs/petalinux-build.log
+~~~
+
+Chỉ chuyển sang đóng gói khi lệnh kết thúc thành công.
+Build lần đầu tải nhiều dữ liệu; giữ log lỗi cụ thể nếu thất bại.
+
+Để khoanh vùng sau khi sửa:
+~~~bash
+petalinux-build -c kernel
+petalinux-build -c adrv9025-custom
+petalinux-build -c adrv-firmware
+petalinux-build
+~~~
+
+Build một module thành công chưa chứng minh rootfs/image đã cập nhật.
+Sau thay đổi driver/app, chạy lại full build trước khi bàn giao image.
+
+~~~bash
+ls -lh images/linux
+test -s images/linux/image.ub
+test -s images/linux/boot.scr
+test -s images/linux/system.dtb
+test -s images/linux/zynqmp_fsbl.elf
+test -s images/linux/pmufw.elf
+test -s images/linux/bl31.elf
+test -s images/linux/u-boot.elf
+dumpimage -l images/linux/image.ub
+dtc -I dtb -O dts -o handoff-logs/system-built.dts images/linux/system.dtb
+grep -nE 'adrv9029|adrv9025|ActiveUseCase|60000000|9c420000|9c400000' \
+  handoff-logs/system-built.dts
+~~~
+
+Kỳ vọng FIT có kernel, FDT và ramdisk phù hợp INITRD.
+DTS đã biên dịch phải còn node ADRV, tham chiếu firmware, DMA, reserved-memory.
+DTC có thể phát cảnh báo khi decompile; dùng kết quả để đối chiếu nội dung.
+
+Tìm .config đã build; đường dẫn cụ thể phụ thuộc Yocto:
+~~~bash
+find build/tmp -name .config -path '*linux-xlnx*'
+find build/tmp/work-shared -name .config
+find build/tmp -name 'adrv9025_custom.ko*'
+~~~
+Chọn đúng .config của kernel hiện tại rồi kiểm tra các symbol mục 6.
+Nếu đường dẫn work-shared không tồn tại, dùng kết quả dưới build/tmp.
+Không lấy config của U-Boot hoặc một build cũ làm bằng chứng kernel.
+
+8. ĐÓNG GÓI BOOT.BIN — HOST
+
+BOOT.BIN chứa các thành phần boot của ZynqMP và bitstream.
+image.ub chứa kernel/device tree/ramdisk theo cấu hình FIT.
+boot.scr là script để U-Boot nạp image.
+
+Dùng bitstream đi cùng XSA và cùng lần build. Từ thư mục project:
+~~~bash
+cd "$ADRV_PROJECT"
+set -o pipefail
+petalinux-package --boot \
+  --fsbl images/linux/zynqmp_fsbl.elf \
+  --fpga project-spec/hw-description/system_top.bit \
+  --u-boot --force 2>&1 | tee handoff-logs/package-boot.log
+
+test -s images/linux/BOOT.BIN
+ls -lh images/linux/BOOT.BIN images/linux/image.ub images/linux/boot.scr
+~~~
+
+Với PetaLinux/ZynqMP, --u-boot bổ sung các thành phần boot cần thiết.
+Đọc log đóng gói để xác nhận FSBL, PMU firmware, TF-A, U-Boot và bitstream
+được lấy đúng. --force chỉ ghi lại BOOT.BIN của project, không nạp vào bo.
+Không dùng FSBL/bitstream của bo khác cùng loại transceiver.
+
+9. CHUẨN BỊ THẺ SD VÀ BOOT
+
+9.1. Gói image để chuyển cho người nhận — HOST
+
+~~~bash
+cd "$ADRV_PROJECT"
+mkdir -p handoff-images
+cp images/linux/BOOT.BIN images/linux/image.ub images/linux/boot.scr \
+  handoff-images/
+(
+  cd handoff-images
+  sha256sum BOOT.BIN image.ub boot.scr > SHA256SUMS
+)
+~~~
+
+Bộ ba này phải từ cùng lần build. Firmware ADRV được recipe cài vào
+/lib/firmware bên trong rootfs. File cấu hình SI5518 trên SD được bổ sung
+theo tài liệu riêng; chúng không tự sinh ra bởi petalinux-build.
+
+9.2. Chuẩn bị thẻ
+
+Ưu tiên thử bộ image đã được chủ bo chạy tốt trước, sau đó thử bộ vừa build.
+Repository hiện chưa cung cấp bộ BOOT.BIN/image.ub/boot.scr đã kiểm thử.
+
+Dùng thẻ thử riêng. Trong GParted/Disks:
+1) Xác định đúng thẻ theo model/dung lượng; sao lưu dữ liệu cần giữ.
+2) Tạo bảng phân vùng MBR/msdos nếu chuẩn bị thẻ mới.
+3) Tạo phân vùng FAT32 đầu tiên, đủ chứa image và các file clock/waveform;
+   có thể chọn 2 GiB hoặc lớn hơn, đặt nhãn BOOT và bật cờ boot.
+4) Mount phân vùng trên HOST.
+
+Bản này dùng INITRD với petalinux-image-minimal, nên không cần phân vùng
+ext4 làm rootfs cho luồng boot này. Nếu đổi sang EXT4/switch_root, phải đổi
+cả cấu hình, cách chép rootfs và hướng dẫn boot tương ứng.
+
+~~~bash
+lsblk -o NAME,SIZE,MODEL,FSTYPE,LABEL,MOUNTPOINTS
+~~~
+
+Đặt biến sau thành điểm mount FAT32 thật trên HOST:
+~~~bash
+export ADRV_SD_MOUNT="/media/$USER/BOOT"
+mountpoint "$ADRV_SD_MOUNT"
+cp "$ADRV_PROJECT/handoff-images/BOOT.BIN" "$ADRV_SD_MOUNT/"
+cp "$ADRV_PROJECT/handoff-images/image.ub" "$ADRV_SD_MOUNT/"
+cp "$ADRV_PROJECT/handoff-images/boot.scr" "$ADRV_SD_MOUNT/"
+cp "$ADRV_PROJECT/handoff-images/SHA256SUMS" "$ADRV_SD_MOUNT/"
+(
+  cd "$ADRV_SD_MOUNT"
+  sha256sum -c SHA256SUMS
+)
+sync
+~~~
+
+Chỉ chép sau khi mountpoint xác nhận đó là phân vùng SD. Sau khi chép thêm
+file theo tài liệu SI5518, unmount/eject thẻ bằng công cụ hệ thống.
+
+Nếu image.ub không có ramdisk dù root=/dev/ram0, quay lại kiểm tra INITRD/
+image recipe. Nếu dùng boot.scr tùy chỉnh nạp các file rời, phải bàn giao
+đúng toàn bộ file mà script yêu cầu. Có thể trích nội dung để kiểm tra:
+~~~bash
+dumpimage -T script -p 0 -o "$ADRV_PROJECT/handoff-logs/boot.cmd" \
+  "$ADRV_PROJECT/images/linux/boot.scr"
+~~~
+
+9.3. Kết nối và bật bo
+
+- Tắt nguồn, lắp thẻ vào đúng khe SD boot của bo.
+- Đặt boot mode SD theo schematic/hướng dẫn phần cứng của đúng revision.
+- Kết nối nguồn đúng định mức và cổng UART console của bo.
+- Serial: 115200 baud, 8 data bits, no parity, 1 stop bit, không flow control.
+- Bật chế độ lưu log trong terminal trước khi cấp nguồn.
+
+Ví dụ dùng screen trên HOST, thay thiết bị UART bằng cổng thực tế:
+~~~bash
+screen /dev/ttyUSB0 115200
+~~~
+
+Chưa có ảnh switch/jumper và sơ đồ chân của bo trong gói nguồn. Chủ bo cần
+cung cấp vị trí cụ thể; không suy ra từ ZCU102 hoặc một bo ADRV9029 khác.
+Thứ tự /dev/mmcblkN hay số mmc của U-Boot cũng cần kiểm tra thực tế.
+
+Kỳ vọng thấy quá trình boot đến U-Boot, Linux và terminal đăng nhập.
+Nếu cần tài khoản, lấy theo image đã bàn giao. Layer ADI có thể ghi đè
+thiết lập user/password của PetaLinux; không suy ra tài khoản chỉ từ hostname.
+
+10. KIỂM TRA LINUX VÀ DRIVER — BOARD
+
+10.1. Ghi nhận hệ thống
+
+Sau khi đăng nhập root:
+~~~bash
+uname -a
+cat /proc/cmdline
+cat /etc/os-release
+cat /proc/device-tree/model
+ls /sys/bus/spi/devices
+ls /sys/bus/iio/devices
+~~~
+
+Linux boot thành công là một mức kiểm tra riêng, chưa xác nhận ADRV/JESD.
+
+10.2. Firmware
+
+Các file phải có trong /lib/firmware:
+~~~bash
+for f in ActiveUseCase.profile ActiveUtilInit.profile \
+  ADRV9025_FW.bin ADRV9025_DPDCORE_FW.bin stream_image.bin \
+  RxGainTable.csv TxAttenTable.csv
+do
+  if [ -s "/lib/firmware/$f" ]; then
+    ls -l "/lib/firmware/$f"
+  else
+    echo "MISSING: /lib/firmware/$f"
+  fi
+done
+modinfo adrv9025_custom
+~~~
+
+Lỗi "module not found": kiểm tra rootfs và kernel-modules.
+Lỗi "invalid module format": kiểm tra module có được build cùng kernel/
+ABI đang chạy hay không. Không lấy .ko của máy build khác để chép thay tùy ý.
+
+10.3. Điều kiện clock
+
+Trước khi nạp/khởi tạo driver, hoàn tất phần SI5518 trong tài liệu riêng.
+Trên nền tảng khác, bên port cần cấp clock và SYSREF đáp ứng profile/JESD.
+Node fixed-clock trong device tree chỉ mô tả tần số, không cấu hình chip
+clock vật lý. SPI đọc được chip chưa chứng minh JESD có clock đúng.
+
+10.4. Nạp driver
+
+Có thể dùng adrv-firmware.sh theo tài liệu riêng, hoặc thực hiện thủ công
+như dưới đây sau khi clock sẵn sàng. Không khởi tạo lại liên tiếp bằng cả
+hai cách khi một cách đang chạy.
+
+~~~bash
+for m in dma-axi-dmac xilinx_transceiver axi_adxcvr_drv \
+  axi_jesd204_tx axi_jesd204_rx adrv9025_custom
+do
+  modprobe "$m" || break
+done
+
+ADRV_PHY=""
+for d in /sys/bus/iio/devices/iio:device*
+do
+  [ -f "$d/name" ] || continue
+  printf '%s: ' "$d"
+  cat "$d/name"
+  if [ "$(cat "$d/name")" = "adrv9029" ]; then
+    ADRV_PHY="$d"
+  fi
+done
+printf 'ADRV_PHY=%s\n' "$ADRV_PHY"
+~~~
+
+Nếu ADRV_PHY rỗng, xem dmesg và kiểm tra probe, SPI/reset, firmware, clock.
+Không cố định iio:device0/1/2 vì thứ tự đăng ký có thể thay đổi.
+
+Driver có thể được udev tự nạp theo modalias. Dòng KERNEL_MODULE_AUTOLOAD
+được comment trong recipe không đảm bảo module không bao giờ tự nạp.
+Kiểm tra lsmod/dmesg nếu nghi driver đã probe trước khi clock sẵn sàng.
+
+10.5. Kiểm tra JESD
+
+Chỉ chạy khi ADRV_PHY đã tìm được:
+~~~bash
+if [ -n "$ADRV_PHY" ]; then
+  adrv_wait=0
+  while [ "$adrv_wait" -lt 35 ]; do
+    adrv_state=$(cat "$ADRV_PHY/jesd204_fsm_state")
+    adrv_error=$(cat "$ADRV_PHY/jesd204_fsm_error")
+    printf 'STATE=%s ERROR=%s\n' "$adrv_state" "$adrv_error"
+    if [ "$adrv_state" = "opt_post_running_stage" ] && \
+       [ "$adrv_error" = "0" ]; then
+      break
+    fi
+    sleep 1
+    adrv_wait=$((adrv_wait + 1))
+  done
+fi
+dmesg | tail -n 160
+~~~
+
+Mẫu giá trị đạt:
+~~~text
+STATE=opt_post_running_stage ERROR=0
+~~~
+
+Hết thời gian mà chưa đạt thì ghi nhận FAIL và lưu log. Không đánh giá
+thành công chỉ vì modprobe trả về 0. Đọc cả cảnh báo framer/deframer/lane;
+trạng thái FSM cũng chưa thay thế phép đo dữ liệu TX/RX.
+
+11. TIÊU CHÍ KIỂM TRA VÀ LƯU KẾT QUẢ
+
+Mức A — BUILD:
+- Full build/package kết thúc thành công.
+- Có BOOT.BIN, image.ub, boot.scr và checksum.
+- DTB có các node/phụ thuộc cần thiết; module tùy chỉnh có trong image.
+
+Mức B — BOOT:
+- Boot đúng image, vào Linux trên đúng bo; UART log được lưu.
+- Ghi uname -a, cmdline, mã revision source và checksum image.
+
+Mức C — DRIVER/JESD:
+- Firmware đủ, driver tùy chỉnh nhận ADRV9029.
+- Clock sẵn sàng; FSM đạt opt_post_running_stage, error=0.
+- Không có lỗi probe, timeout hoặc cảnh báo link chưa xử lý.
+
+Mức D — DỮ LIỆU:
+- TX: chạy waveform đã biết, đo được tín hiệu theo cấu hình thử nghiệm.
+- RX: đưa tín hiệu đã biết, thu đủ mẫu và phổ/IQ phù hợp.
+- Thực hiện theo SI5518_and_Apps_Guide.md.
+- DPD là bài kiểm tra riêng khi phạm vi port có DPD; app hiện chỉ dùng TX4.
+
+Ghi mỗi lần thử:
+  Ngày / người thực hiện / mã bo và revision:
+  Commit nguồn và các patch:
+  Ubuntu / PetaLinux / meta-adi / kernel / libiio:
+  SHA256 BOOT.BIN / image.ub / boot.scr:
+  Profile RF / clock / waveform:
+  Kết quả A, B, C, D: PASS / FAIL / CHƯA THỬ
+  Log UART, kernel, ảnh đo và ghi chú lỗi:
+
+Ghi vào file thực tế sau khi chạy; không đánh dấu PASS từ việc đọc tài liệu.
+Với INITRD, file ghi trong rootfs và /tmp có thể mất khi reboot. Chép log,
+capture và ảnh đo sang SD/máy HOST trước khi tắt nguồn.
+
+12. LƯU DẤU VẾT BUILD VÀ CHUẨN BỊ PORT
+
+Trên HOST:
+~~~bash
+cd "$ADRV_PROJECT"
+git -C "$ADRV_REPO" rev-parse HEAD > handoff-logs/source.commit
+git -C "$ADRV_WORK/meta-adi" rev-parse HEAD > handoff-logs/meta-adi.commit
+git -C "$ADRV_WORK/meta-adi" diff > handoff-logs/meta-adi-local.patch
+cp /etc/os-release handoff-logs/host-os-release.txt
+cp project-spec/configs/config handoff-logs/project-config.txt
+cp project-spec/configs/rootfs_config handoff-logs/rootfs-config.txt
+cp project-spec/meta-user/conf/petalinuxbsp.conf handoff-logs/petalinuxbsp.conf
+sha256sum project-spec/hw-description/system.xsa \
+  project-spec/hw-description/system_top.bit > handoff-logs/hardware.sha256
+~~~
+
+Cần lưu thêm kernel commit thực tế được BitBake sử dụng, .config cuối,
+log build/package và mọi file sửa bên ngoài repository.
+Nếu build lại bằng revision khác, ghi thành một bản thử mới.
+
+Điểm xuất phát để port driver:
+- adrv9025.c: probe, IIO/sysfs, JESD FSM và phần mở rộng DPD.
+- adrv9025_conv.c, cf_axi_adc.h: tích hợp ADC core.
+- platforms/linux_platform.c: lớp nền tảng Linux/SPI/firmware.
+- devices/adrv9025 và common: bộ API ADI đi kèm.
+- system-user.dtsi: kết nối clock, reset, DMA, TPL, JESD và profile.
+- linux-xlnx_%.bbappend / fragment .cfg: cấu hình kernel.
+- adrv9025-custom.bb và Makefile: cách build module ngoài kernel.
+
+Mục tiêu nền tảng đích phải xác định thêm kernel/API, driver clock, SPI,
+GPIO, JESD204 framework, các IP FPGA và DMA/IIO. Trước tiên đạt các mức
+kiểm tra trên bản tham chiếu, rồi thay từng phần và so sánh cùng bài test.
+XSA của bo này không dùng nguyên trạng cho bo FPGA khác.
+
+13. KHI GẶP LỖI
+
+- Không tìm thấy layer:
+  kiểm tra CONFIG_USER_LAYER_0 và meta-adi-xilinx/conf/layer.conf.
+- Nothing PROVIDES/RPROVIDES gpio-demo hoặc peekpoke:
+  bỏ lựa chọn không có recipe, hoặc bổ sung đúng nguồn còn thiếu.
+- Không có symbol ADI trong menu kernel:
+  xác nhận layer ADI được dùng và kernel là cây ADI, không chỉ kernel Xilinx.
+- Lỗi undefined symbol/cf_axi_adc khi nạp module:
+  kiểm tra CF_AXI_ADC, dependency và kernel ABI/module cùng lần build.
+- Device tree báo label không tồn tại:
+  so XSA với các label system-user.dtsi; kiểm tra BBMASK và luồng DTG.
+- Đường dẫn còn /home/fw5/...:
+  chạy lại config với user layer đúng; kiểm tra file generated được sinh mới,
+  không sửa hàng loạt đường dẫn vào source/firmware một cách mù quáng.
+- Boot dừng trước Linux:
+  kiểm tra boot mode, thẻ, UART, BOOT.BIN và bitstream đúng bo.
+- Linux báo không mount được root:
+  kiểm tra INITRD, image recipe, ramdisk trong FIT và boot.scr.
+- SPI có thiết bị nhưng JESD không chạy:
+  kiểm tra clock thực, reset, firmware/profile, lane mapping, PLL và SYSREF.
+- Vào Linux nhưng không có app/module:
+  kiểm tra rootfs đang boot có đúng image vừa build hay không.
+
+14. NHỮNG THÔNG TIN CHỦ BO CẦN BỔ SUNG ĐỂ XÁC NHẬN BÀN GIAO
+
+Tài liệu đã có quy trình thao tác và tiêu chí kiểm tra. Các dữ kiện phần cứng/
+kết quả sau chưa có trong repository tại thời điểm biên soạn:
+- Ubuntu/kernel/meta-adi/libiio và patch chính xác của bản lab đã chạy tốt.
+- Bộ BOOT.BIN/image.ub/boot.scr đã đo kiểm, cùng SHA256.
+- Ảnh boot-mode switch, đầu nguồn, UART, khe SD của đúng revision bo.
+- File cấu hình SI5518 thực tế và thông tin clock/SYSREF tại các đầu ra.
+- Waveform tham chiếu, mức tín hiệu, dây nối/attenuator và ảnh đo TX/RX.
+- Log khởi tạo ADRV/JESD và kết quả test thực tế; DPD nếu có yêu cầu.
+
+Các mục này cần được xác nhận bằng bo đang chạy. Không thể suy ra chỉ từ
+ZIP, và không được thay bằng số liệu hoặc log giả để làm tài liệu có vẻ đủ.
+
+15. TÀI LIỆU THAM CHIẾU
+
+AMD UG1144 2023.2 — yêu cầu môi trường:
+https://docs.amd.com/r/2023.2-English/ug1144-petalinux-tools-reference-guide/Installation-Requirements
+
+AMD UG1144 2023.2 — cài PetaLinux:
+https://docs.amd.com/r/2023.2-English/ug1144-petalinux-tools-reference-guide/Installing-the-PetaLinux-Tool
+
+AMD UG1144 2023.2 — nhập phần cứng:
+https://docs.amd.com/r/2023.2-English/ug1144-petalinux-tools-reference-guide/Importing-a-Hardware-Configuration
+
+AMD UG1144 2023.2 — đóng gói boot:
+https://docs.amd.com/r/2023.2-English/ug1144-petalinux-tools-reference-guide/petalinux-package-boot-Examples
+
+AMD UG1144 2023.2 — rootfs/image:
+https://docs.amd.com/r/2023.2-English/ug1144-petalinux-tools-reference-guide/Image-Packaging-Configuration
+
+ADI meta-adi 2023_R2:
+https://github.com/analogdevicesinc/meta-adi/blob/b406e8ff6b735deb5dbfcb8a6d46662b8a371d14/meta-adi-xilinx/README.md
+
+ADI kernel Kconfig (phụ thuộc ADC core):
+https://github.com/analogdevicesinc/linux/blob/86d61468a7856e952c7ca237f798d86d6abd2e27/drivers/iio/adc/Kconfig
+
+Nguồn của bo dùng để đối chiếu:
+https://github.com/Fuong-Tr/ADRV/blob/2de76efbbf60f37d84ba224be8a4008353549a85/project-spec.zip
+
