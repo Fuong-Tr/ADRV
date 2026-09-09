@@ -7,8 +7,7 @@
 - **BOARD:** Linux chạy trên phần cứng đích.
 - **U-BOOT:** console bootloader, trước khi Linux khởi động.
 - Chạy lệnh HOST bằng Bash, tài khoản thường; chỉ dùng sudo cho thao tác hệ thống cần quyền.
-- Các giá trị dạng `<...>` là chỗ phải thay, không dán nguyên vào terminal.
-- Dừng tại bước lỗi và xử lý trước khi thực hiện bước phụ thuộc tiếp theo.
+
 
 | Thuộc hướng dẫn chung này | Thuộc tài liệu riêng của board |
 |---|---|
