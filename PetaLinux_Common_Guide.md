@@ -42,68 +42,8 @@ Nếu chỉ cần dựng hệ thống cơ bản, có thể bắt đầu với te
 
 ### 3.1. Hệ điều hành và tài nguyên
 
-Dùng Linux x86_64 trong danh sách được hỗ trợ của **đúng release**. Ví dụ PetaLinux 2023.2 hỗ trợ Ubuntu 20.04.6 và 22.04.2. Theo [AMD: Installation Requirements][requirements], mốc tối thiểu là RAM 8 GB, CPU 8 lõi ở 2 GHz hoặc tương đương, ổ trống 100 GB.
+Kiểm tra linux trên máy hiện tại - với máy đã sử dụng là Petalinux 2023.2
 
-Cho máy làm việc, nên dự trù RAM 16–32 GB và SSD trống 200 GB trở lên để chứa nguồn/cache/nhiều lần build; đây là đề xuất vận hành, không phải yêu cầu tối thiểu AMD.
-
-Dùng filesystem Linux cục bộ, đường dẫn không có khoảng trắng. Có Internet hoặc mirror/cache offline đã chuẩn bị. Không đặt chung TMPDIR cho nhiều project.
-
-```bash
-cat /etc/os-release
-uname -m
-free -h
-nproc
-df -h .
-readlink -f /bin/sh
-```
-
-### 3.2. Gói phụ thuộc
-
-Cài danh sách package theo Release Notes/Prerequisites của phiên bản đã chọn. Nhóm dưới đây là ví dụ khởi đầu trên Ubuntu 22.04 cho luồng 2023.2; không thay thế danh sách đầy đủ của AMD:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y \
-  build-essential gcc-multilib gawk git wget diffstat chrpath socat \
-  xterm autoconf automake libtool texinfo unzip zip cpio pax rsync \
-  python3 python3-pip python3-pexpect python3-git python3-jinja2 \
-  libncurses5-dev libtinfo5 zlib1g-dev libssl-dev \
-  file bc screen u-boot-tools device-tree-compiler
-```
-
-Nếu installer báo thiếu gói, bổ sung đúng gói/release rồi chạy lại. Không đổi sang bản Ubuntu mới hơn chỉ vì tên gói khác.
-
-Nếu tài liệu release yêu cầu `/bin/sh` là Bash và kết quả đang là dash, trên máy Ubuntu build chuyên dụng:
-
-```bash
-sudo dpkg-reconfigure dash
-```
-
-Chọn **No** khi được hỏi dùng dash làm /bin/sh. Thao tác này thay đổi shell hệ thống của HOST.
-
-### 3.3. Cài công cụ và kích hoạt
-
-Tải installer từ AMD cho release đã thống nhất. Đặt biến dưới đây thành đường dẫn thật:
-
-```bash
-export PLNX_VERSION="2023.2"
-export PLNX_INSTALL_DIR="$HOME/tools/petalinux/$PLNX_VERSION"
-export PLNX_INSTALLER="$HOME/Downloads/<PETALINUX_INSTALLER>.run"
-
-test -f "$PLNX_INSTALLER"
-mkdir -p "$PLNX_INSTALL_DIR"
-chmod u+x "$PLNX_INSTALLER"
-"$PLNX_INSTALLER" --dir "$PLNX_INSTALL_DIR"
-source "$PLNX_INSTALL_DIR/settings.sh"
-
-command -v petalinux-create
-command -v petalinux-config
-command -v petalinux-build
-```
-
-Không chạy installer/build bằng root. Mỗi terminal mới cần source lại settings.sh. Dùng terminal riêng, tránh trộn nhiều release hoặc môi trường Yocto/SDK khác nhau. Xem [Installing the PetaLinux Tool][install].
-
-Vivado cần khi tạo/sửa/xuất lại thiết kế FPGA. Nếu đã nhận XSA/bitstream phù hợp, người build Linux không nhất thiết phải dựng lại RTL. JTAG cần công cụ/cable driver phù hợp trên HOST.
 
 ## 4. Tạo project và nhập phần cứng — HOST
 
@@ -112,22 +52,15 @@ Vivado cần khi tạo/sửa/xuất lại thiết kế FPGA. Nếu đã nhận X
 Ví dụ cho ZynqMP; đổi template thành `zynq` nếu dùng Zynq-7000:
 
 ```bash
-export PLNX_WORK_DIR="$HOME/petalinux-work"
-export PLNX_PROJECT_NAME="linux_system"
-export PLNX_TEMPLATE="zynqMP"
-export PLNX_HW_DIR="$HOME/hardware-export"
+petalinux-create -t project --template "_template_" --name "_template_"
 
-mkdir -p "$PLNX_WORK_DIR"
-cd "$PLNX_WORK_DIR"
-petalinux-create -t project --template "$PLNX_TEMPLATE" --name "$PLNX_PROJECT_NAME"
-export PLNX_PROJECT_DIR="$PLNX_WORK_DIR/$PLNX_PROJECT_NAME"
-cd "$PLNX_PROJECT_DIR"
-petalinux-config --get-hw-description="$PLNX_HW_DIR"
+petalinux-config --get-hw-description="$xsa_path"
 ```
+Template đúng với loại CPU architecture trên thiết kế, vd: Zynq, ZynqMP, versal, ...
 
-PLNX_HW_DIR phải là thư mục chứa XSA đúng board; nên chỉ để một XSA cần nhập. Dùng thư mục xuất phần cứng riêng với thư mục nội bộ project.
+xsa_path phải là thư mục chứa XSA đúng board;
 
-Trong menu, rà lại CPU, DDR, UART, Ethernet, SD và cấu hình boot. XSA/bitstream phải cùng thiết kế. Sau khi thay XSA, nhập lại và kiểm tra các tùy chỉnh device tree còn khớp.
+XSA/bitstream phải cùng thiết kế. Sau khi thay XSA, nhập lại và kiểm tra các tùy chỉnh device tree còn khớp.
 
 ### 4.2. Cách B: project từ BSP
 
@@ -138,16 +71,15 @@ cd "$PLNX_WORK_DIR"
 petalinux-create -t project -s "<BSP_PATH>"
 ```
 
-Đọc tên thư mục vừa tạo trong log, đặt lại PLNX_PROJECT_DIR và vào thư mục đó. Chỉ nhập XSA thay thế khi BSP/board yêu cầu. Không lấy BSP của board khác chỉ vì cùng họ SoC.
 
-Tham khảo [ví dụ tạo project][create].
+Chi tiết tại [ví dụ tạo project][create].
 
 ## 5. Cấu hình phần mềm — HOST
 
 Từ thư mục project:
 
 ```bash
-cd "$PLNX_PROJECT_DIR"
+cd "$PROJECT_DIR"
 petalinux-config
 petalinux-config -c kernel
 petalinux-config -c rootfs
@@ -192,16 +124,7 @@ Ví dụ SD bên dưới ưu tiên **rootfs trong RAM**. Chỉ chọn phương �
 
 ## 6. Build và kiểm tra đầu ra — HOST
 
-```bash
-cd "$PLNX_PROJECT_DIR"
-mkdir -p handoff-logs
-set -o pipefail
-petalinux-build 2>&1 | tee handoff-logs/build.log
-```
-
-Chỉ tiếp tục khi build trả mã 0 và hoàn tất thành công. `pipefail` giúp lỗi build không bị che bởi lệnh tee.
-
-Build lại thành phần để khoanh vùng sau khi sửa:
+Build / build thành phần để khoanh vùng sau khi sửa:
 
 ```bash
 petalinux-build -c kernel
@@ -211,14 +134,6 @@ petalinux-build
 ```
 
 Thay RECIPE_NAME bằng recipe thật. Sau build riêng driver/app, chạy full build để cập nhật image/rootfs trước khi nạp.
-
-```bash
-ls -lh images/linux
-test -s images/linux/image.ub
-test -s images/linux/system.dtb
-dumpimage -l images/linux/image.ub
-dtc -I dtb -O dts -o handoff-logs/system-built.dts images/linux/system.dtb
-```
 
 Các lệnh trên giả định output FIT thông dụng. Nếu chọn image rời, kiểm tra bộ file đúng cấu hình đó.
 
@@ -247,116 +162,22 @@ test -s "$PLNX_BITSTREAM"
 **Zynq UltraScale+ MPSoC:**
 
 ```bash
-petalinux-package --boot \
-  --fsbl images/linux/zynqmp_fsbl.elf \
-  --fpga "$PLNX_BITSTREAM" \
-  --u-boot --force
+petalinux-package --boot --fsbl zynqmp_fsbl.elf --fpga system.bit --pmufw pmufw.elf --atf bl31.elf --u-boot u-boot.elf "--option"
+
 ```
 
-**Zynq-7000:**
-
-```bash
-petalinux-package --boot \
-  --fsbl images/linux/zynq_fsbl.elf \
-  --fpga "$PLNX_BITSTREAM" \
-  --u-boot --force
-```
-
-Nếu không nạp PL ở giai đoạn boot, bỏ `--fpga` theo thiết kế và ghi rõ khi nào PL được cấu hình. Không bỏ bitstream nếu driver cần IP PL đang hoạt động.
-
-Đọc log đóng gói để xác nhận các input đúng lần build; ZynqMP cần chuỗi FSBL, PMUFW, TF-A và U-Boot phù hợp. `--force` cho phép ghi lại artifact đóng gói, không flash board.
-
-```bash
-test -s images/linux/BOOT.BIN
-ls -lh images/linux/BOOT.BIN
-```
 
 Tham khảo [AMD: cấu hình U-Boot và đóng gói][package]. Luồng Versal/PDI hoặc flash layout khác cần lệnh riêng.
 
-## 8. Nạp qua SD và boot
+## 8. Nạp qua boot
 
-### 8.1. Gói bàn giao — HOST
+### 8.1 Nạp qua SD card và boot
 
-Ví dụ FIT/rootfs RAM và boot.scr chuẩn:
+Chuẩn bị SD Card -> Copy 3 file BOOT.bin, boot.scr, image.ub vào SD Card -> Đưa vào mạch -> Chuyển mạch qua SD boot Mode
 
-```bash
-cd "$PLNX_PROJECT_DIR"
-mkdir -p handoff-images
-cp images/linux/BOOT.BIN images/linux/image.ub images/linux/boot.scr handoff-images/
-(
-  cd handoff-images
-  sha256sum BOOT.BIN image.ub boot.scr > SHA256SUMS
-)
-```
+### 8.2 Nạp qua JTAG & Ethernet
 
-Nếu boot script nạp thêm DTB/Image/ramdisk rời, bổ sung đúng các file đó và checksum. Có thể đọc script bằng:
-
-```bash
-dumpimage -T script -p 0 -o handoff-logs/boot.cmd images/linux/boot.scr
-```
-
-### 8.2. Chuẩn bị thẻ — HOST
-
-1. Xác định thẻ theo model/dung lượng; sao lưu dữ liệu trước khi phân vùng.
-2. Dùng Disks/GParted chuẩn bị phân vùng boot FAT32 theo yêu cầu BootROM/board; MBR và FAT32 đầu tiên là cách thường dùng với Zynq/ZynqMP.
-3. Chọn dung lượng đủ chứa toàn bộ boot files. Rootfs EXT4 cần thêm phân vùng Linux.
-4. Mount FAT32 và xác nhận đúng điểm mount.
-
-```bash
-lsblk -o NAME,SIZE,MODEL,FSTYPE,LABEL,MOUNTPOINTS
-export PLNX_SD_BOOT="/media/$USER/BOOT"
-mountpoint "$PLNX_SD_BOOT"
-```
-
-Chỉ sau khi xác nhận thành công:
-
-```bash
-cp "$PLNX_PROJECT_DIR/handoff-images/BOOT.BIN" "$PLNX_SD_BOOT/"
-cp "$PLNX_PROJECT_DIR/handoff-images/image.ub" "$PLNX_SD_BOOT/"
-cp "$PLNX_PROJECT_DIR/handoff-images/boot.scr" "$PLNX_SD_BOOT/"
-cp "$PLNX_PROJECT_DIR/handoff-images/SHA256SUMS" "$PLNX_SD_BOOT/"
-(
-  cd "$PLNX_SD_BOOT"
-  sha256sum -c SHA256SUMS
-)
-sync
-```
-
-Unmount/eject bằng công cụ hệ thống trước khi rút thẻ.
-
-**Nếu dùng EXT4:** ngoài boot files, giải nén rootfs đã build lên phân vùng EXT4 trống, giữ quyền sở hữu:
-
-```bash
-export PLNX_SD_ROOT="/media/$USER/rootfs"
-mountpoint "$PLNX_SD_ROOT"
-# Chỉ chạy sau khi xác nhận đúng phân vùng EXT4 đích.
-sudo tar --numeric-owner -xpf "$PLNX_PROJECT_DIR/images/linux/rootfs.tar.gz" \
-  -C "$PLNX_SD_ROOT"
-sync
-```
-
-Phải chọn sinh rootfs.tar.gz từ trước. Xác định root device/PARTUUID và bootargs đúng board; không mặc định mọi board đều dùng /dev/mmcblk0p2. Không dùng boot script rootfs RAM nguyên trạng cho rootfs EXT4.
-
-### 8.3. Boot board
-
-1. Tắt nguồn, đặt boot mode SD theo tài liệu board, lắp đúng khe.
-2. Nối nguồn và UART console đúng thông số phần cứng.
-3. Mở serial terminal và bật lưu log trước khi cấp nguồn.
-4. Bật board, theo dõi U-Boot → Linux → đăng nhập.
-
-Ví dụ UART **chỉ khi board cấu hình 115200, 8N1, không flow control**:
-
-```bash
-screen /dev/ttyUSB0 115200
-```
-
-Thay cổng bằng thiết bị thật. Tài khoản/mật khẩu lấy từ cấu hình image hoặc bên bàn giao; không mặc định root/root.
-
-### 8.4. JTAG hoặc QSPI/eMMC
-
-JTAG thích hợp tải image để thử/debug, thường vào RAM; không đồng nghĩa ghi image bền vững. Cần đúng cable, hardware server, boot mode và lệnh theo release. Kiểm tra `petalinux-boot --help` và UG1144 của bản dùng.
-
-QSPI/eMMC cần xác định chip đích, partition/offset, kích thước, boot script và cách phục hồi trước khi ghi. Các giá trị này bắt buộc nằm trong tài liệu board; không có một lệnh flash chung an toàn cho mọi mạch. Luồng thao tác đầy đủ của hướng dẫn này là SD.
+Chưa thực hiện và tìm hiểu
 
 ## 9. Kiểm tra kết quả — BOARD
 
@@ -408,84 +229,6 @@ readlink -f /sys/bus/<BUS>/devices/<DEVICE_ID>/driver
 
 Tên module, firmware, trạng thái JESD, bài test TX/RX, clock SI5518 và lệnh app thuộc tài liệu riêng. Boot Linux thành công không chứng minh ngoại vi đã hoạt động.
 
-### 9.3. Lưu log
-
-```bash
-mkdir -p /tmp/bringup-logs
-uname -a > /tmp/bringup-logs/uname.txt
-cat /proc/cmdline > /tmp/bringup-logs/cmdline.txt
-cat /proc/mounts > /tmp/bringup-logs/mounts.txt
-dmesg > /tmp/bringup-logs/dmesg.txt
-```
-
-Chép log về HOST hoặc storage bền vững trước khi reboot. /tmp và rootfs RAM có thể mất dữ liệu. Giữ cả log UART từ lúc cấp nguồn để thấy lỗi trước kernel.
-
-## 10. Tiêu chí nghiệm thu chung
-
-| Mức | Điều kiện đạt | Bằng chứng |
-|---|---|---|
-| Môi trường | Kích hoạt đúng release, đủ dependencies | OS, cấu hình máy, đường dẫn công cụ |
-| Build | Full build và package thành công | Log và danh sách artifact |
-| Image | Bộ boot/rootfs đồng nhất, checksum khớp | SHA256SUMS và cấu hình rootfs |
-| Boot | Vào Linux trên đúng board/image | UART log, uname, model, cmdline |
-| Driver | Bind đúng thiết bị, không có lỗi khởi tạo chưa xử lý | dmesg, sysfs, module/firmware |
-| Chức năng | Bài test board/app đạt thông số thống nhất | Log/đo đạc theo tài liệu riêng |
-
-Không đánh dấu mức sau dựa vào mức trước. Nếu phạm vi chỉ là Linux nền, ghi kiểm tra driver/chức năng là **CHƯA THỬ** hoặc **NGOÀI PHẠM VI**.
-
-Mẫu ghi cho mỗi lần thử:
-
-```text
-Ngày / người thực hiện:
-Board / revision:
-Host OS / CPU / RAM:
-PetaLinux / Vivado:
-Project / layer / kernel / U-Boot commits:
-Patch hoặc thay đổi chưa commit:
-XSA và bitstream SHA256:
-BOOT.BIN / image.ub / boot.scr / rootfs SHA256:
-Boot medium / rootfs type:
-Môi trường: PASS / FAIL / CHƯA THỬ
-Build và image: PASS / FAIL / CHƯA THỬ
-Boot Linux: PASS / FAIL / CHƯA THỬ
-Driver: PASS / FAIL / CHƯA THỬ / NGOÀI PHẠM VI
-Chức năng: PASS / FAIL / CHƯA THỬ / NGOÀI PHẠM VI
-Đường dẫn log / lỗi / cách tái hiện:
-```
-
-## 11. Lỗi thường gặp
-
-| Hiện tượng | Kiểm tra trước |
-|---|---|
-| Không tìm thấy petalinux-* | Source đúng settings.sh trong terminal hiện tại |
-| Installer/build thiếu thư viện | OS được hỗ trợ, danh sách package và lỗi cụ thể |
-| Fetch source thất bại | DNS, proxy, chứng chỉ, mirror và quyền truy cập nguồn |
-| Không thấy layer / Nothing PROVIDES | Đường dẫn layer, recipe, tên package và revision |
-| Device tree label không tồn tại | XSA mới có khớp system-user.dtsi và luồng sinh DT không |
-| Hết RAM/ổ đĩa | RAM, swap, dung lượng/inode; giảm parallelism trong cấu hình Yocto khi cần |
-| Không có UART | Nguồn, boot mode, đúng cổng/baud, image bootloader |
-| U-Boot không thấy image | Đúng SD/partition, tên file và đường dẫn trong boot.scr |
-| Kernel không mount root | root=, filesystem driver, ramdisk hoặc phân vùng EXT4 |
-| Module not found | Module có được cài vào rootfs và đúng kernel đang chạy không |
-| Invalid module format | Kernel ABI/vermagic, kiến trúc và cấu hình module |
-| Unknown symbol | Dependency/module hoặc API kernel không tương thích |
-| Driver probe lỗi | DT, clock/reset, nguồn, firmware và bus thực |
-| Sửa app nhưng chạy bản cũ | Full build, checksum image vừa chép và nguồn boot thực tế |
-
-Đọc lỗi đầu tiên có ý nghĩa và log task được build báo. Không xóa toàn bộ cache hoặc project ngay khi gặp lỗi; lưu bằng chứng rồi sửa đúng nguyên nhân.
-
-## 12. Bộ bàn giao tối thiểu
-
-- Hướng dẫn chung này và tài liệu board đã điền đủ thông số.
-- XSA/bitstream hoặc BSP hợp lệ; nguồn/layer/recipe/patch có revision.
-- Project configs, rootfs config, device tree và kernel fragments.
-- Bộ image cùng lần build, checksum và thông tin rootfs/boot.
-- Log build/package/UART và báo cáo PASS/FAIL thực tế.
-- Bài test driver/app cùng đầu vào và kết quả mong đợi.
-
-Đội tiếp nhận nên boot bộ image tham chiếu đã kiểm thử trước nếu có, rồi boot bộ tự build và so sánh cùng bài test. Nếu chưa có image/log tham chiếu, ghi rõ chưa có thay vì suy ra từ mã nguồn.
-
-## 13. Tài liệu AMD tham khảo
 
 Chọn đúng phiên bản trong AMD Docs khi thay release:
 
