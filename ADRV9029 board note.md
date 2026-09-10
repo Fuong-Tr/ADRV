@@ -147,10 +147,6 @@ Nguyên tắc:
 | Cấu hình layer | `<PROJECT_DIR>/project-spec/meta-user/conf/petalinuxbsp.conf` |
 | Device tree | `<PROJECT_DIR>/project-spec/meta-user/recipes-bsp/device-tree/files/system-user.dtsi` |
 | Firmware ADRV | `<PROJECT_DIR>/project-spec/meta-user/recipes-apps/adrv-firmware/` |
-| Ứng dụng SI5518 | `<PROJECT_DIR>/project-spec/meta-user/recipes-apps/si5518config/` |
-| Ứng dụng TX | `<PROJECT_DIR>/project-spec/meta-user/recipes-apps/tx-dma/` |
-| Ứng dụng RX | `<PROJECT_DIR>/project-spec/meta-user/recipes-apps/rx-dma/` |
-| Ứng dụng DPD | `<PROJECT_DIR>/project-spec/meta-user/recipes-apps/dpd-app/` |
 | Layer ADI cho Xilinx | `<ADI_DIR>/meta-adi/meta-adi-xilinx/` |
 | Source driver ADRV902x của ADI | `<ADI_DIR>/linux/drivers/iio/adc/adrv902x/` |
 | Device tree PL sinh tự động | `<PROJECT_DIR>/components/plnx_workspace/device-tree/device-tree/pl.dtsi` |
