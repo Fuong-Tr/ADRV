@@ -171,7 +171,7 @@ Các nhóm chức năng cần kiểm tra:
 | Chức năng | Cấu hình cần có |
 |---|---|
 | SPI | Controller SPI của ZynqMP được bật |
-| SPI userspace | `CONFIG_SPI_SPIDEV` nếu ứng dụng SI5518 dùng spidev |
+| SPI userspace | `CONFIG_SPI_SPIDEV` nếu có ứng dụng dùng spidev |
 | IIO | Industrial I/O core |
 | IIO buffer | Buffer support cho luồng RX/TX |
 | JESD204 | JESD204 framework và các thành phần liên quan |
@@ -181,7 +181,6 @@ Các nhóm chức năng cần kiểm tra:
 | ADC/DAC | Các AXI ADC/DAC/IIO core cần cho datapath |
 | CMA/DMA | Bộ nhớ liên tục đủ cho buffer RX/TX |
 | GPIO | Reset/control GPIO của bo |
-| GPIO sysfs | Cần nếu chương trình SI5518 hiện tại vẫn dùng giao diện sysfs cũ |
 | DebugFS | Hữu ích cho debug IIO/JESD/DPD |
 | Module support | Bật nếu các driver được build dạng module |
 
@@ -199,17 +198,6 @@ Mở:
 
 ```bash
 petalinux-config -c rootfs
-```
-
-Bật các gói cần cho bo, tối thiểu theo nhu cầu thử nghiệm:
-
-```text
-adrv-firmware
-si5518config
-tx-dma
-rx-dma
-dpd-app
-kernel-modules
 ```
 
 Nên bật thêm bộ công cụ libiio:
